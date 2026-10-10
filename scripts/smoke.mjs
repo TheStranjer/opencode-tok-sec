@@ -23,6 +23,7 @@ const REQUIRED_FILES = [
   "src/controller.ts",
   "src/meter.ts",
   "src/display.ts",
+  "src/view.ts",
 ]
 
 function fail(message) {
