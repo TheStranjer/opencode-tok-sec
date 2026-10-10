@@ -115,10 +115,12 @@ function storeDouble(): StoreDouble {
  * evaluates each memo exactly once, so nothing here would react at all.
  * @param check - Runs with the mounted view and its invalidation handles.
  * @param overrides - Props to swap out: the store, the slot input, the options.
+ * @param width - Columns the footer row has, as the renderer would report it.
  */
 function withView(
   check: (view: MeterView, handles: Handles) => void,
   overrides: Partial<MeterViewProps> = {},
+  width?: () => number | undefined,
 ): void {
   createRoot((dispose): void => {
     const [beat, setBeat] = createSignal(0),
@@ -135,7 +137,7 @@ function withView(
           rev,
           store: empty.store,
           ...overrides,
-        }),
+        }, width),
         {
           invalidate: (): void => {
             setRev((prev): number => prev + 1)
@@ -230,6 +232,52 @@ describe("createMeterView", () => {
         assert.equal(double.columns(), 20)
       },
       { options: { ...OPTIONS, vuColumns: 20 }, store: double.store },
+    )
+  })
+
+  it("omits details down the importance list as the row narrows", () => {
+    const double = storeDouble()
+    double.set(frame())
+    const [width, setWidth] = createSignal<number | undefined>(undefined)
+    withView(
+      (view) => {
+        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲10% · avg 40.0 · pk 45.0 · ttft 0.8s")
+        setWidth(44)
+        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲10% · avg 40.0 · pk 45.0")
+        setWidth(30)
+        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲10% · avg 40.0")
+        setWidth(24)
+        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲10%")
+      },
+      { store: double.store },
+      width,
+    )
+  })
+
+  it("keeps the core and trims graph columns when the row cannot fit the head", () => {
+    const double = storeDouble()
+    double.set(frame())
+    withView(
+      (view) => {
+        assert.equal(view.text(), "tok/s 42.0 ▲10%")
+      },
+      { store: double.store },
+      () => 10,
+    )
+  })
+
+  it("restores omitted details when the width opens up again", () => {
+    const double = storeDouble()
+    double.set(frame())
+    const [width, setWidth] = createSignal<number | undefined>(24)
+    withView(
+      (view) => {
+        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲10%")
+        setWidth(undefined)
+        assert.equal(view.text(), formatLine(frame(), OPTIONS))
+      },
+      { store: double.store },
+      width,
     )
   })
 

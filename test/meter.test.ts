@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
-import { formatClock, formatCount, formatLine, formatRate, hasData, rateTier, renderVu, vuFullScale } from "../src/display.ts"
+import { formatClock, formatCount, formatLine, formatLineFitting, formatRate, hasData, rateTier, renderVu, vuFullScale } from "../src/display.ts"
 import { MeterStore, TpsMeter, approxTokens, measureRate } from "../src/meter.ts"
 import type { DisplayOptions } from "../src/display.ts"
 import type { Sample, Snapshot } from "../src/meter.ts"
@@ -152,6 +152,106 @@ describe("formatLine", () => {
   it("omits ttft when it is unknown", () => {
     const line = formatLine({ ...base, ttftMs: undefined }, options)
     assert.ok(line.endsWith("· avg 38.2 · pk 61.0"))
+  })
+})
+
+describe("formatLineFitting", () => {
+  const base: Snapshot = {
+    rate: 42.5,
+    avg: 38.2,
+    live: true,
+    settled: false,
+    tokens: 1200,
+    elapsed: 12_000,
+    peak: 61,
+    peakBucket: 55,
+    trend: "up",
+    trendPct: 18,
+    ttftMs: 800,
+    vu: [10, 20, 30, 40],
+  },
+   options: DisplayOptions = {
+    label: "tok/s",
+    showVu: true,
+    vuColumns: 12,
+    vuScale: "auto",
+    vuFullTps: 50,
+    showTrend: true,
+    showAvg: true,
+    showPeak: true,
+    showTtft: true,
+    showTokenCount: true,
+    showElapsed: true,
+  },
+   FULL = "tok/s ▁▃▄▆ 42.5 ▲18% · avg 38.2 · pk 61.0 · ttft 0.8s · 1.2k tok · 12.0s"
+
+  it("renders the full line when the width is no constraint", () => {
+    for (const width of [undefined, Number.POSITIVE_INFINITY, 0, -4, Number.NaN, FULL.length, 200]) {
+      assert.equal(formatLineFitting(base, options, width), FULL, `width ${String(width)}`)
+    }
+  })
+
+  it("drops elapsed first, then the token count", () => {
+    assert.equal(
+      formatLineFitting(base, options, FULL.length - 1),
+      "tok/s ▁▃▄▆ 42.5 ▲18% · avg 38.2 · pk 61.0 · ttft 0.8s · 1.2k tok",
+    )
+    assert.equal(
+      formatLineFitting(base, options, 58),
+      "tok/s ▁▃▄▆ 42.5 ▲18% · avg 38.2 · pk 61.0 · ttft 0.8s",
+    )
+  })
+
+  it("drops the rest of the fourth tier before peak, and peak before avg", () => {
+    assert.equal(
+      formatLineFitting(base, options, 52),
+      "tok/s ▁▃▄▆ 42.5 ▲18% · avg 38.2 · pk 61.0",
+    )
+    assert.equal(
+      formatLineFitting(base, options, 40),
+      "tok/s ▁▃▄▆ 42.5 ▲18% · avg 38.2",
+    )
+  })
+
+  it("keeps the label, graph, rate and trend when every detail must go", () => {
+    assert.equal(formatLineFitting(base, options, 28), "tok/s ▁▃▄▆ 42.5 ▲18%")
+  })
+
+  it("sheds the oldest graph columns as a last resort", () => {
+    assert.equal(formatLineFitting(base, options, 18), "tok/s ▄▆ 42.5 ▲18%")
+    assert.equal(formatLineFitting(base, options, 17), "tok/s ▆ 42.5 ▲18%")
+  })
+
+  it("holds the irreducible core when even that cannot fit", () => {
+    for (const width of [16, 10, 5, 1]) {
+      assert.equal(formatLineFitting(base, options, width), "tok/s 42.5 ▲18%", `width ${width}`)
+    }
+  })
+
+  it("fits around segments the user already disabled", () => {
+    assert.equal(
+      formatLineFitting(base, { ...options, showAvg: false }, 40),
+      "tok/s ▁▃▄▆ 42.5 ▲18% · pk 61.0",
+    )
+    assert.equal(formatLineFitting(base, { ...options, showVu: false }, 20), "tok/s 42.5 ▲18%")
+  })
+
+  it("never grows the line past the width it was given when anything fits", () => {
+    for (let width = 1; width < FULL.length; width += 1) {
+      const line = formatLineFitting(base, options, width)
+      assert.ok(line.length <= width || line === "tok/s 42.5 ▲18%", `width ${width}: ${line}`)
+    }
+  })
+
+  it("drops segments that are absent from the line without shifting the rest", () => {
+    assert.equal(
+      formatLineFitting({ ...base, ttftMs: undefined }, options, 58),
+      "tok/s ▁▃▄▆ 42.5 ▲18% · avg 38.2 · pk 61.0 · 1.2k tok",
+    )
+    assert.equal(
+      formatLineFitting({ ...base, trend: "none", trendPct: 0 }, options, 52),
+      "tok/s ▁▃▄▆ 42.5 · avg 38.2 · pk 61.0 · ttft 0.8s",
+    )
   })
 })
 

@@ -27,6 +27,8 @@ export type DisplayOptions = {
 }
 
 const KILO = 1000,
+  /** Highest tail drop rank; fitting removes ranks from here down to 1. */
+  MAX_TAIL_RANK = 5,
   MEGA = 1_000_000,
 
   TREND_GLYPHS: Record<Trend, string> = {
@@ -168,15 +170,16 @@ export function hasData(snapshot: Snapshot | undefined): boolean {
  * Graph columns plus the rate, as the leading chunk of the display line.
  * @param options - Which segments to include in the line.
  * @param snapshot - Fully computed meter snapshot to render.
+ * @param columns - VU columns the graph may render (fitting trims this last).
  * @returns The label-adjacent first chunk of the display line.
  */
-function graphSegment(options: DisplayOptions, snapshot: Snapshot): string {
+function graphSegment(options: DisplayOptions, snapshot: Snapshot, columns: number): string {
   if (!options.showVu) {
     return formatRate(snapshot.rate)
   }
   const graph = renderVu(
     snapshot.vu,
-    options.vuColumns,
+    columns,
     vuFullScale(snapshot.vu, options.vuScale, options.vuFullTps, snapshot.peakBucket),
   )
   if (graph.length === 0) {
@@ -202,30 +205,65 @@ function trendSegment(options: DisplayOptions, snapshot: Snapshot): string {
   return snapshot.trendPct > 0 ? `${glyph}${Math.round(snapshot.trendPct)}%` : glyph
 }
 
+/** One tail segment with the order it is dropped in when the line must fit. */
+type TailPart = {
+  readonly rank: number
+  readonly text: string
+}
+
 /**
- * The stat segments joined with ` · ` after the rate and graph.
+ * The stat segments with their drop ranks: rank 1 is kept longest and higher
+ * ranks are omitted first. Importance order per the ticket is avg, then peak,
+ * then everything else (ttft, token count, elapsed), so the tail of the line
+ * carries the higher ranks and loses them first.
  * @param options - Which segments to include in the line.
  * @param snapshot - Fully computed meter snapshot to render.
- * @returns The enabled stat segments in display order.
+ * @returns The enabled stat segments in display order, with drop ranks.
  */
-function tailParts(options: DisplayOptions, snapshot: Snapshot): Array<string> {
-  const tail: Array<string> = []
+function tailParts(options: DisplayOptions, snapshot: Snapshot): Array<TailPart> {
+  const tail: Array<TailPart> = []
   if (options.showAvg) {
-    tail.push(`avg ${formatRate(snapshot.avg)}`)
+    tail.push({ rank: 1, text: `avg ${formatRate(snapshot.avg)}` })
   }
   if (options.showPeak) {
-    tail.push(`pk ${formatRate(snapshot.peak)}`)
+    tail.push({ rank: 2, text: `pk ${formatRate(snapshot.peak)}` })
   }
   if (options.showTtft && snapshot.ttftMs !== undefined) {
-    tail.push(`ttft ${formatClock(snapshot.ttftMs)}`)
+    tail.push({ rank: 3, text: `ttft ${formatClock(snapshot.ttftMs)}` })
   }
   if (options.showTokenCount) {
-    tail.push(`${formatCount(snapshot.tokens)} tok`)
+    tail.push({ rank: 4, text: `${formatCount(snapshot.tokens)} tok` })
   }
   if (options.showElapsed) {
-    tail.push(formatClock(snapshot.elapsed))
+    tail.push({ rank: 5, text: formatClock(snapshot.elapsed) })
   }
   return tail
+}
+
+/**
+ * Assemble the display line from ranked tail segments and a graph width.
+ * @param options - Which segments to include in the line.
+ * @param snapshot - Fully computed meter snapshot to render.
+ * @param tail - Tail segments to join with ` · ` after the head.
+ * @param columns - VU columns the graph segment may render.
+ * @returns The assembled single-line status string.
+ */
+function buildLine(
+  options: DisplayOptions,
+  snapshot: Snapshot,
+  tail: ReadonlyArray<TailPart>,
+  columns: number,
+): string {
+  const body: Array<string> = [graphSegment(options, snapshot, columns)],
+    trend = trendSegment(options, snapshot)
+  if (trend.length > 0) {
+    body.push(trend)
+  }
+  let line = `${options.label} ${body.join(" ")}`
+  if (tail.length > 0) {
+    line += ` · ${tail.map((part): string => part.text).join(" · ")}`
+  }
+  return line
 }
 
 /**
@@ -235,15 +273,51 @@ function tailParts(options: DisplayOptions, snapshot: Snapshot): Array<string> {
  * @returns The single-line status string for the footer.
  */
 export function formatLine(snapshot: Snapshot, options: DisplayOptions): string {
-  const body: Array<string> = [graphSegment(options, snapshot)],
-    tail = tailParts(options, snapshot),
-    trend = trendSegment(options, snapshot)
-  if (trend.length > 0) {
-    body.push(trend)
+  return buildLine(options, snapshot, tailParts(options, snapshot), options.vuColumns)
+}
+
+/**
+ * Build the display line, omitting unimportant details until it fits one row.
+ *
+ * Drop order follows the importance list: elapsed, token count and TTFT go
+ * first, then peak, then the average. The label, rate and trend never drop;
+ * the graph only ever sheds its oldest columns, and disappears last of all.
+ * A width that is absent, fractional-truncated to zero, NaN or infinite means
+ * "no constraint" and renders the full line.
+ * @param snapshot - Fully computed meter snapshot to render.
+ * @param options - Which segments to include in the line.
+ * @param maxWidth - Columns available on one footer row, if known.
+ * @returns The most detailed line that fits, else the most compact one.
+ */
+export function formatLineFitting(
+  snapshot: Snapshot,
+  options: DisplayOptions,
+  maxWidth: number | undefined,
+): string {
+  const parts = tailParts(options, snapshot)
+  let line = buildLine(options, snapshot, parts, options.vuColumns)
+  /* Absent or non-positive widths carry no constraint; `!(x > 0)` also folds
+   * away NaN, and infinity can never be undercut by a finite line. */
+  if (maxWidth === undefined || !(maxWidth > 0) || !Number.isFinite(maxWidth)) {
+    return line
   }
-  let line = `${options.label} ${body.join(" ")}`
-  if (tail.length > 0) {
-    line += ` · ${tail.join(" · ")}`
+  const available = Math.floor(maxWidth)
+  if (line.length <= available) {
+    return line
+  }
+  let kept = parts
+  for (let rank = MAX_TAIL_RANK; rank >= 1; rank -= 1) {
+    kept = kept.filter((part): boolean => part.rank !== rank)
+    line = buildLine(options, snapshot, kept, options.vuColumns)
+    if (line.length <= available) {
+      return line
+    }
+  }
+  for (let columns = options.vuColumns - 1; columns >= 0; columns -= 1) {
+    line = buildLine(options, snapshot, [], columns)
+    if (line.length <= available) {
+      return line
+    }
   }
   return line
 }
