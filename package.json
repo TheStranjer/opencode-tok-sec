@@ -1,0 +1,61 @@
+{
+  "name": "opencode-tok-sec",
+  "version": "0.1.0",
+  "description": "Live tokens-per-second VU meter for the OpenCode V2 TUI prompt footer.",
+  "type": "module",
+  "license": "MIT",
+  "author": "TheStranjer <791672+TheStranjer@users.noreply.github.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TheStranjer/opencode-tok-sec.git"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "opencode-v2",
+    "tui",
+    "tps",
+    "tokens-per-second",
+    "throughput"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./tui": "./src/tui.tsx"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20",
+    "opencode": ">=2.0.0"
+  },
+  "scripts": {
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "smoke": "node scripts/smoke.mjs",
+    "ci": "sh scripts/ci.sh"
+  },
+  "dependencies": {
+    "@opencode/plugin": "^2.0.26"
+  },
+  "peerDependencies": {
+    "@opentui/core": ">=0.5.17",
+    "@opentui/solid": ">=0.5.17",
+    "solid-js": ">=1.9.0"
+  },
+  "devDependencies": {
+    "@opencode/theme": "2.0.26",
+    "@types/node": "^22.10.0",
+    "@opentui/core": "0.5.17",
+    "@opentui/solid": "0.5.17",
+    "esbuild": "^0.28.2",
+    "solid-js": "1.9.12",
+    "tsx": "^4.19.2",
+    "typescript": "^5.5.0"
+  }
+}
