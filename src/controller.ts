@@ -61,33 +61,38 @@ function registerMeterEvents(config: RateConfig, data: MeterApi, onChange: () =>
       if (data.session.status(sessionID) === "idle") {
         return
       }
-      store.record(sessionID, delta)
+      meter.record(sessionID, delta)
       onChange()
     },
+
+    /* Built before any subscription below is taken out: a handler that fired
+     * while `data.on` was still registering would read this name in its
+     * temporal dead zone and throw out of the plugin's setup. */
+    meter = new MeterStore(config),
     noteStepTokens = (event: StepTokens): void => {
       const { tokens } = event.data
       if (tokens) {
-        store.noteExact(event.data.sessionID, tokens.output + tokens.reasoning)
+        meter.noteExact(event.data.sessionID, tokens.output + tokens.reasoning)
       }
     },
     settleTurn = (event: SessionEvent): void => {
-      if (store.settle(event.data.sessionID)) {
+      if (meter.settle(event.data.sessionID)) {
         onChange()
       }
     },
     stops = [
       data.on("session.execution.started", (event) => {
-        store.beginTurn(event.data.sessionID, event.created)
+        meter.beginTurn(event.data.sessionID, event.created)
         onChange()
       }),
       data.on("session.step.started", (event) => {
-        store.beginRequest(event.data.sessionID, event.data.started)
+        meter.beginRequest(event.data.sessionID, event.data.started)
         onChange()
       }),
       data.on("session.text.delta", countStream),
       data.on("session.reasoning.delta", countStream),
       data.on("session.tool.called", (event) => {
-        if (store.newSegment(event.data.sessionID)) {
+        if (meter.newSegment(event.data.sessionID)) {
           onChange()
         }
       }),
@@ -97,14 +102,13 @@ function registerMeterEvents(config: RateConfig, data: MeterApi, onChange: () =>
       data.on("session.execution.failed", settleTurn),
       data.on("session.execution.interrupted", settleTurn),
       data.on("session.deleted", (event) => {
-        if (store.drop(event.data.sessionID)) {
+        if (meter.drop(event.data.sessionID)) {
           onChange()
         }
       }),
-    ],
-    store = new MeterStore(config)
+    ]
 
-  return { stops, store }
+  return { stops, store: meter }
 }
 
 /**

@@ -153,7 +153,7 @@ The plugin subscribes to the TUI's typed event stream (`context.data.on`) and tr
 
 The live rate is `tokens in window / elapsed span` over the trailing window, measured on the wall clock, and is ignored while the session's status reads `idle`. The average is `turn tokens / active generation time` — the time spent streaming, excluding tool pauses. Peak is the highest one-second rate seen during the turn (never below the average); trend compares the last two complete seconds. VU columns auto-scale to the largest bucket in view, rescaled to the summed exact token total when the turn completes.
 
-The meter renders into the `prompt.footer.status` slot with semantic theme tokens (`text.feedback.error/warning/success`), and the whole measurement core (`src/meter.ts`) is pure and unit-tested without any plugin imports.
+The meter renders into the `prompt.footer.status` slot with semantic theme tokens (`text.feedback.error/warning/success`). The layers are split so each one is testable without a terminal: `src/meter.ts` measures, `src/display.ts` formats, `src/view.ts` turns a store frame into the reactive line, and `src/tui.tsx` only mounts that line in the slot. The first three are unit-tested with no plugin imports at runtime.
 
 ## Author
 
