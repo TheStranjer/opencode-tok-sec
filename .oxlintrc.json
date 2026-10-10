@@ -1,0 +1,203 @@
+{
+  // Oxlint — configured to be absolutely insufferable.
+  //
+  // Every category is denied: errors, non-zero exit, warnings are errors too.
+  // Type-aware linting is on. Rules that are off-by-default but maximally
+  // pedantic (complexity caps, sorting, explicit accessibility, strict
+  // boolean expressions, jsdoc completeness...) are switched on explicitly.
+  //
+  // The only `off` entries are rules whose premise this codebase rejects on
+  // purpose: Solid is not React, the package's public API is named exports,
+  // and OpenCode's plugin contract is `export default Plugin.define(...)`.
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "eslint",
+    "typescript",
+    "unicorn",
+    "oxc",
+    "import",
+    "jsdoc",
+    "promise",
+    "node",
+    "react",
+    "jsx-a11y"
+  ],
+  "categories": {
+    "correctness": "deny",
+    "suspicious": "deny",
+    "pedantic": "deny",
+    "style": "deny",
+    "perf": "deny",
+    "restriction": "deny",
+    "nursery": "deny"
+  },
+  "options": {
+    "typeAware": true,
+    "reportUnusedDisableDirectives": "deny",
+    "denyWarnings": true
+  },
+  "env": {
+    "node": true,
+    "builtin": true
+  },
+  "settings": {
+    "jsdoc": {
+      "augmentsExtendsReplacesDocs": true,
+      "ignoreReplacesDocs": true,
+      "contexts": []
+    }
+  },
+  "ignorePatterns": ["node_modules", "dist", "package-lock.json"],
+  "rules": {
+    // ---- off-by-default rules, explicitly denied because we suffer no fools ----
+    "eslint/max-lines": ["error", { "max": 400, "skipBlankLines": true, "skipComments": true }],
+    "eslint/max-lines-per-function": ["error", { "max": 60, "skipBlankLines": true, "skipComments": true }],
+    "eslint/max-params": ["error", 4],
+    "eslint/max-depth": ["error", 3],
+    "eslint/complexity": ["error", 10],
+    "eslint/max-statements": ["error", 30],
+    "eslint/max-classes-per-file": ["error", { "max": 2 }],
+    "eslint/no-magic-numbers": [
+      "error",
+      {
+        "ignore": [0, 1, -1, 2, 3, 4, 5, 10, 60, 100, 1000],
+        "ignoreArrayIndexes": true,
+        "enforceConst": true,
+        "detectObjects": false
+      }
+    ],
+    // Member lists must be alphabetical; the declaration-order check is off
+    // because oxlint's sort key for whole import statements is opaque and
+    // fights `consistent-type-imports` splitting value/type imports.
+    "eslint/sort-imports": ["error", { "ignoreDeclarationSort": true }],
+    "eslint/sort-keys": ["error", "asc", { "caseSensitive": true, "natural": false }],
+    "eslint/sort-vars": "error",
+    // oxlint's default one-var mode demands merging EVERY same-kind declaration
+    // in a scope, which would hoist initializers across control flow and
+    // change semantics. "consecutive" keeps the enforceable half: adjacent
+    // same-kind declarations must be one statement, and sort-vars then forces
+    // their names alphabetical.
+    "eslint/one-var": ["error", "consecutive", { "requires": { "const": false } }],
+    "eslint/no-use-before-define": ["error", { "variables": false, "functions": false }],
+    "eslint/func-style": ["error", "declaration", { "allowArrowFunctions": true }],
+    "eslint/curly": ["error", "all"],
+    "eslint/no-plusplus": "error",
+    "eslint/no-nested-ternary": "error",
+    "eslint/default-case": "error",
+    "eslint/guard-for-in": "error",
+    "eslint/no-await-in-loop": "error",
+    "eslint/no-console": ["error", { "allow": ["info", "warn", "error"] }],
+    "unicorn/import-style": ["error", { "styles": { "node:path": { "named": true }, "path": { "named": true } } }],
+    "eslint/no-empty-function": ["error", { "allow": ["methods", "arrowFunctions"] }],
+    "typescript/consistent-type-definitions": ["error", "type"],
+    "typescript/prefer-function-type": "error",
+    "typescript/no-wrapper-object-types": "error",
+    "typescript/strict-boolean-expressions": "error",
+    "typescript/consistent-indexed-object-style": ["error", "record"],
+    "typescript/no-inferrable-types": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/no-extraneous-class": "error",
+    "typescript/consistent-type-imports": ["error", { "prefer": "type-imports" }],
+    "typescript/prefer-readonly-parameter-types": [
+      "error",
+      {
+        "treatMethodsAsReadonly": true,
+        "ignoreInferredTypes": true,
+        "allow": [
+          { "from": "package", "name": ["Context", "Data", "SlotMap", "UI", "PromptFooterInput"], "package": "@opencode/plugin" },
+          { "from": "package", "name": ["ResolvedTheme"], "package": "@opencode/theme" },
+          { "from": "package", "name": ["RGBA"], "package": "@opentui/core" },
+          { "from": "lib", "name": ["Array", "Map", "TextEncoder"] }
+        ]
+      }
+    ],
+    "eslint/id-length": ["error", { "min": 2, "exceptions": ["t", "i", "_"] }],
+    "unicorn/filename-case": ["error", { "case": "kebabCase" }],
+    "unicorn/no-null": "error",
+    "unicorn/no-array-callback-reference": "error",
+    "unicorn/no-array-for-each": "error",
+    "unicorn/no-array-reduce": "error",
+    "unicorn/no-nested-ternary": "error",
+    "unicorn/number-literal-case": "error",
+    "unicorn/prefer-spread": "error",
+    "unicorn/prefer-string-raw": "error",
+    "promise/avoid-new": "error",
+    "promise/no-nesting": "error",
+    "promise/no-return-wrap": "error",
+
+    // ---- deliberately off: the rule's premise does not apply here ----
+    // Optional chaining and object spread are how this codebase handles
+    // absent values and immutable snapshots. Banning syntax is not taste.
+    "oxc/no-optional-chaining": "off",
+    "oxc/no-rest-spread-properties": "off",
+    // The public API of this package IS named exports; colocated type/value
+    // exports are intentional documentation structure, not disorder.
+    "import/no-named-export": "off",
+    "import/group-exports": "off",
+    "import/exports-last": "off",
+    // A Node CLI plugin importing node builtins is the point, not a smell.
+    "import/no-nodejs-modules": "off",
+    // Explicit `=== undefined` distinguishes absent from falsy in TS unions;
+    // banning the literal only invents worse idioms.
+    "eslint/no-undefined": "off",
+    // Ternaries are the expression-level if this code relies on constantly.
+    // (Nested ternaries remain banned via no-nested-ternary.)
+    "eslint/no-ternary": "off",
+    // OpenCode's plugin API requires `export default Plugin.define(...)`.
+    "import/no-default-export": "off",
+    "import/no-anonymous-default-export": "off",
+    "unicorn/prefer-module": "off",
+    // `foo(undefined)` for a required `T | undefined` parameter is explicit,
+    // not useless; this rule rewrites it into calls that do not typecheck.
+    "unicorn/no-useless-undefined": "off",
+    // Explicit @param/@returns types would duplicate the TypeScript signature
+    // right beside them and rot; the types stay single-sourced in TS.
+    "jsdoc/require-param-type": "off",
+    "jsdoc/require-returns-type": "off",
+    // Splitting value and `import type` statements from one module is what
+    // `consistent-type-imports` requires; this rule counts that a duplicate.
+    "eslint/no-duplicate-imports": "off",
+    // Solid is not React: `render` functions are setup-once, memos read the
+    // clock by design, and object/function prop identity is meaningless here.
+    "react/purity": "off",
+    "react/only-export-components": "off",
+    "react/react-in-jsx-scope": "off",
+    "react/no-unknown-property": ["error", { "ignore": ["fg", "ref"] }],
+    // `.tsx` is the JSX extension here; the rule's default only knows `.jsx`.
+    "react/jsx-filename-extension": "off",
+    "typescript/array-type": ["error", { "default": "generic", "readonly": "generic" }],
+  },
+  "overrides": [
+    {
+      // Tests may reach for internals, repeat setup, and float node:test's
+      // intentionally-fire-and-forget registrations. Nothing else may.
+      "files": ["test/*", "scripts/*"],
+      "rules": {
+        "eslint/max-lines": "off",
+        "eslint/max-lines-per-function": "off",
+        "eslint/max-statements": "off",
+        "eslint/complexity": "off",
+        "eslint/sort-vars": "off",
+        "eslint/no-magic-numbers": "off",
+        "eslint/sort-keys": "off",
+        "eslint/no-await-in-loop": "off",
+        "eslint/func-style": "off",
+        "typescript/no-explicit-any": "off",
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-return": "off",
+        "typescript/no-unsafe-type-assertion": "off",
+        "typescript/no-floating-promises": "off",
+        "typescript/strict-boolean-expressions": "off",
+        "typescript/unbound-method": "off",
+        "unicorn/no-array-for-each": "off",
+        "import/no-relative-parent-imports": "off",
+        "node/no-sync": "off",
+        "node/no-top-level-await": "off",
+        "node/callback-return": "off"
+      }
+    }
+  ]
+}

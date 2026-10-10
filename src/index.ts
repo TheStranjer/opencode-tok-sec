@@ -7,5 +7,12 @@ import { Plugin } from "@opencode/plugin"
 
 export default Plugin.define({
   id: "tok-sec",
-  setup() {},
+
+  /**
+   * Deliberately empty: all behavior lives in the TUI plugin (`./tui`).
+   * @returns Nothing; the server side of this plugin has no work to do.
+   */
+  setup() {
+    return undefined
+  },
 })

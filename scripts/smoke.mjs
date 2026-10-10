@@ -9,10 +9,10 @@
  *   - the packed pure modules can be imported as-is
  *   - the packed entrypoints bundle (JSX + externals) without error
  */
-import { execFileSync } from "node:child_process"
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { execFileSync } from "node:child_process"
 import { join } from "node:path"
+import { tmpdir } from "node:os"
 
 const REQUIRED_FILES = [
   "package.json",
@@ -22,11 +22,11 @@ const REQUIRED_FILES = [
   "src/tui.tsx",
   "src/controller.ts",
   "src/meter.ts",
+  "src/display.ts",
 ]
 
 function fail(message) {
-  console.error(`smoke: ${message}`)
-  process.exit(1)
+  throw new Error(`smoke: ${message}`)
 }
 
 const temp = mkdtempSync(join(tmpdir(), "opencode-tok-sec-smoke-"))
@@ -35,28 +35,35 @@ try {
   const raw = execFileSync("npm", ["pack", "--json", "--pack-destination", temp], {
     cwd: process.cwd(),
     encoding: "utf8",
-  })
-  const [info] = JSON.parse(raw)
-  const files = info.files.map((entry) => entry.path)
-
-  const missing = REQUIRED_FILES.filter((file) => !files.includes(file))
-  if (missing.length > 0) fail(`tarball is missing: ${missing.join(", ")}`)
+  }),
+    [info] = JSON.parse(raw),
+    files = info.files.map((entry) => entry.path),
+    missing = REQUIRED_FILES.filter((file) => !files.includes(file))
+  if (missing.length > 0) {
+    fail(`tarball is missing: ${missing.join(", ")}`)
+  }
 
   execFileSync("tar", ["xzf", join(temp, info.filename), "-C", temp])
-  const extracted = join(temp, "package")
-  const pkg = JSON.parse(readFileSync(join(extracted, "package.json"), "utf8"))
+  const extracted = join(temp, "package"),
+    pkg = JSON.parse(readFileSync(join(extracted, "package.json"), "utf8"))
 
   for (const [key, value] of Object.entries(pkg.exports ?? {})) {
     const target = typeof value === "string" ? value : value?.import
-    if (!target || !existsSync(join(extracted, target))) fail(`export "${key}" -> "${target}" does not resolve`)
+    if (!target || !existsSync(join(extracted, target))) {
+      fail(`export "${key}" -> "${target}" does not resolve`)
+    }
   }
   if (!pkg.exports?.["."] || !pkg.exports?.["./tui"]) {
     fail('package.json exports must include "." and "./tui"')
   }
 
-  const meter = await import(join(extracted, "src", "meter.ts"))
-  if (typeof meter.formatLine !== "function" || typeof meter.TpsMeter !== "function") {
-    fail("packed src/meter.ts did not export the expected API")
+  const meter = await import(join(extracted, "src", "meter.ts")),
+    display = await import(join(extracted, "src", "display.ts"))
+  if (
+    typeof display.formatLine !== "function" ||
+    typeof meter.TpsMeter !== "function"
+  ) {
+    fail("packed src/meter.ts + src/display.ts did not export the expected API")
   }
 
   const controller = await import(join(extracted, "src", "controller.ts"))
@@ -82,7 +89,7 @@ try {
     }
   }
 
-  console.log(`smoke: OK (${files.length} files, ${info.filename})`)
+  console.info(`smoke: OK (${files.length} files, ${info.filename})`)
 } finally {
   rmSync(temp, { recursive: true, force: true })
 }

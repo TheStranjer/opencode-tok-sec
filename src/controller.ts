@@ -17,87 +17,118 @@
  *   - `session.deleted` frees that session's meter.
  */
 import type { Data } from "@opencode/plugin/tui/context"
-import { MeterStore, type RateConfig } from "./meter.ts"
+import { MeterStore } from "./meter.ts"
+import type { RateConfig } from "./meter.ts"
 
 /** The typed event + cached-state surface the controller consumes. */
 export type MeterApi = Data
 
 export type MeterController = {
-  store: MeterStore
-  tick: (now?: number) => void
-  dispose: () => void
+  readonly dispose: () => void
+  readonly store: MeterStore
+  readonly tick: (now?: number) => void
 }
 
-type Streamed = { data: { sessionID: string; delta: string } }
-type SessionEvent = { data: { sessionID: string } }
-type StepTokens = { data: { sessionID: string; tokens?: { output: number; reasoning: number } } }
+type Streamed = { readonly data: { readonly delta: string; readonly sessionID: string } }
+type SessionEvent = { readonly data: { readonly sessionID: string } }
+type StepTokens = {
+  readonly data: {
+    readonly sessionID: string
+    readonly tokens?: { readonly output: number; readonly reasoning: number }
+  }
+}
 
+type Registrations = {
+  readonly stops: Array<() => void>
+  readonly store: MeterStore
+}
+
+/**
+ * Subscribe every metered event, mutating nothing outside the returned
+ * registrations. Unsubscription closures land in `stops` in subscription
+ * order; `dispose` drains them in that same order.
+ * @param config - Rate estimator tunables for the store's meters.
+ * @param data - Typed event + cached-state facade to subscribe through.
+ * @param onChange - Called after every state-changing event.
+ * @returns The store and the unsubscribe handles for its subscriptions.
+ */
+function registerMeterEvents(config: RateConfig, data: MeterApi, onChange: () => void): Registrations {
+  const countStream = (event: Streamed): void => {
+      const { delta, sessionID } = event.data
+      if (!sessionID || !delta) {
+        return
+      }
+      if (data.session.status(sessionID) === "idle") {
+        return
+      }
+      store.record(sessionID, delta)
+      onChange()
+    },
+    noteStepTokens = (event: StepTokens): void => {
+      const { tokens } = event.data
+      if (tokens) {
+        store.noteExact(event.data.sessionID, tokens.output + tokens.reasoning)
+      }
+    },
+    settleTurn = (event: SessionEvent): void => {
+      if (store.settle(event.data.sessionID)) {
+        onChange()
+      }
+    },
+    stops = [
+      data.on("session.execution.started", (event) => {
+        store.beginTurn(event.data.sessionID, event.created)
+        onChange()
+      }),
+      data.on("session.step.started", (event) => {
+        store.beginRequest(event.data.sessionID, event.data.started)
+        onChange()
+      }),
+      data.on("session.text.delta", countStream),
+      data.on("session.reasoning.delta", countStream),
+      data.on("session.tool.called", (event) => {
+        if (store.newSegment(event.data.sessionID)) {
+          onChange()
+        }
+      }),
+      data.on("session.step.ended", noteStepTokens),
+      data.on("session.step.failed", noteStepTokens),
+      data.on("session.execution.succeeded", settleTurn),
+      data.on("session.execution.failed", settleTurn),
+      data.on("session.execution.interrupted", settleTurn),
+      data.on("session.deleted", (event) => {
+        if (store.drop(event.data.sessionID)) {
+          onChange()
+        }
+      }),
+    ],
+    store = new MeterStore(config)
+
+  return { stops, store }
+}
+
+/**
+ * Build the meter subsystem for one TUI plugin instance.
+ * @param data - Typed event + cached-state facade to subscribe through.
+ * @param config - Rate estimator tunables for the store's meters.
+ * @param onChange - Called after every state-changing event and tick.
+ * @returns The store plus its `tick`/`dispose` controls.
+ */
 export function createMeterController(
   data: MeterApi,
   config: RateConfig,
   onChange: () => void,
 ): MeterController {
-  const store = new MeterStore(config)
-  const stops: Array<() => void> = []
-
-  stops.push(
-    data.on("session.execution.started", (event) => {
-      store.beginTurn(event.data.sessionID, event.created)
-      onChange()
-    }),
-  )
-
-  stops.push(
-    data.on("session.step.started", (event) => {
-      store.beginRequest(event.data.sessionID, event.data.started)
-      onChange()
-    }),
-  )
-
-  const countStream = (event: Streamed) => {
-    const { sessionID, delta } = event.data
-    if (!sessionID || !delta) return
-    if (data.session.status(sessionID) === "idle") return
-    store.record(sessionID, delta)
-    onChange()
-  }
-  stops.push(data.on("session.text.delta", countStream))
-  stops.push(data.on("session.reasoning.delta", countStream))
-
-  stops.push(
-    data.on("session.tool.called", (event) => {
-      if (store.newSegment(event.data.sessionID)) onChange()
-    }),
-  )
-
-  const noteStepTokens = (event: StepTokens) => {
-    const tokens = event.data.tokens
-    if (tokens) store.noteExact(event.data.sessionID, tokens.output + tokens.reasoning)
-  }
-  stops.push(data.on("session.step.ended", noteStepTokens))
-  stops.push(data.on("session.step.failed", noteStepTokens))
-
-  const settleTurn = (event: SessionEvent) => {
-    if (store.settle(event.data.sessionID)) onChange()
-  }
-  stops.push(data.on("session.execution.succeeded", settleTurn))
-  stops.push(data.on("session.execution.failed", settleTurn))
-  stops.push(data.on("session.execution.interrupted", settleTurn))
-
-  stops.push(
-    data.on("session.deleted", (event) => {
-      if (store.drop(event.data.sessionID)) onChange()
-    }),
-  )
-
-  const dispose = () => {
-    for (const stop of stops.splice(0)) stop()
-  }
+  const { stops, store } = registerMeterEvents(config, data, onChange)
 
   return {
+    dispose: (): void => {
+      for (const stop of stops.splice(0)) {
+        stop()
+      }
+    },
     store,
-    dispose,
-    tick: (now: number = Date.now()) => {
+    tick: (now: number = Date.now()): void => {
       store.prune(now)
       onChange()
     },

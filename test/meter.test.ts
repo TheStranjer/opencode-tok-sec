@@ -1,25 +1,12 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
-import {
-  MeterStore,
-  TpsMeter,
-  approxTokens,
-  formatClock,
-  formatCount,
-  formatLine,
-  formatRate,
-  hasData,
-  measureRate,
-  rateTier,
-  renderVu,
-  vuFullScale,
-  type DisplayOptions,
-  type Sample,
-  type Snapshot,
-} from "../src/meter.ts"
+import { formatClock, formatCount, formatLine, formatRate, hasData, rateTier, renderVu, vuFullScale } from "../src/display.ts"
+import { MeterStore, TpsMeter, approxTokens, measureRate } from "../src/meter.ts"
+import type { DisplayOptions } from "../src/display.ts"
+import type { Sample, Snapshot } from "../src/meter.ts"
 
-const CONFIG = { rollingWindowMs: 1000, idleTimeoutMs: 500, minSpanMs: 200 }
-const WIDE = { rollingWindowMs: 60_000, idleTimeoutMs: 60_000, minSpanMs: 200 }
+const CONFIG = { rollingWindowMs: 1000, idleTimeoutMs: 500, minSpanMs: 200 },
+ WIDE = { rollingWindowMs: 60_000, idleTimeoutMs: 60_000, minSpanMs: 200 }
 
 describe("approxTokens", () => {
   it("returns 0 for empty input", () => {
@@ -43,22 +30,22 @@ describe("measureRate", () => {
   })
 
   it("uses the minimum span for a single fresh sample", () => {
-    const samples: Sample[] = [{ at: 1000, tokens: 10 }]
+    const samples: Array<Sample> = [{ at: 1000, tokens: 10 }]
     assert.equal(measureRate(samples, 1000, CONFIG), 50)
   })
 
   it("uses elapsed span once it exceeds the minimum", () => {
-    const samples: Sample[] = [{ at: 0, tokens: 10 }]
+    const samples: Array<Sample> = [{ at: 0, tokens: 10 }]
     assert.equal(measureRate(samples, 400, CONFIG), 25)
   })
 
   it("returns -1 once the newest sample is idle", () => {
-    const samples: Sample[] = [{ at: 0, tokens: 10 }]
+    const samples: Array<Sample> = [{ at: 0, tokens: 10 }]
     assert.equal(measureRate(samples, 600, CONFIG), -1)
   })
 
   it("ignores samples outside the rolling window", () => {
-    const samples: Sample[] = [
+    const samples: Array<Sample> = [
       { at: 0, tokens: 10 },
       { at: 900, tokens: 10 },
     ]
@@ -66,8 +53,8 @@ describe("measureRate", () => {
   })
 
   it("scales with token count", () => {
-    const low = measureRate([{ at: 900, tokens: 5 }], 1000, CONFIG)
-    const high = measureRate([{ at: 900, tokens: 50 }], 1000, CONFIG)
+    const low = measureRate([{ at: 900, tokens: 5 }], 1000, CONFIG),
+     high = measureRate([{ at: 900, tokens: 50 }], 1000, CONFIG)
     assert.ok(high > low)
   })
 })
@@ -119,8 +106,8 @@ describe("formatLine", () => {
     trendPct: 18,
     ttftMs: 800,
     vu: [10, 20, 30, 40],
-  }
-  const options: DisplayOptions = {
+  },
+   options: DisplayOptions = {
     label: "tok/s",
     showVu: true,
     vuColumns: 12,
@@ -506,12 +493,12 @@ describe("TpsMeter", () => {
   })
 
   it("counts the same tokens regardless of chunk fragmentation", () => {
-    const text = "a".repeat(400)
-    const whole = new TpsMeter(WIDE, () => 0, 0)
+    const text = "a".repeat(400),
+     whole = new TpsMeter(WIDE, () => 0, 0)
     whole.record(text, 1000)
 
     const split = new TpsMeter(WIDE, () => 0, 0)
-    for (let i = 0; i < text.length; i += 7) split.record(text.slice(i, i + 7), 1000 + i)
+    for (let i = 0; i < text.length; i += 7) {split.record(text.slice(i, i + 7), 1000 + i)}
 
     assert.equal(whole.snapshot(1000, 12).tokens, 100)
     assert.equal(split.snapshot(1400, 12).tokens, 100)
@@ -519,7 +506,7 @@ describe("TpsMeter", () => {
 
   it("is fragmentation-invariant down to single-byte chunks", () => {
     const meter = new TpsMeter(WIDE, () => 0, 0)
-    for (let i = 0; i < 8; i += 1) meter.record("a", 1000 + i)
+    for (let i = 0; i < 8; i += 1) {meter.record("a", 1000 + i)}
     assert.equal(meter.snapshot(1008, 12).tokens, 2)
   })
 
@@ -573,7 +560,6 @@ describe("TpsMeter", () => {
     assert.equal(snap.rate, 50)
     assert.equal(snap.avg, 50)
     assert.equal(snap.peak, 50)
-    assert.ok(snap.peak >= snap.avg)
     assert.ok(snap.vu.some((value) => value > 0))
   })
 

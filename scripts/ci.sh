@@ -4,7 +4,7 @@
 #   npm run ci
 #
 # Installs dependencies only when node_modules is missing, then runs the test
-# suite, typecheck, the packed-package smoke test, and a pack dry-run.
+# suite, lint, typecheck, the packed-package smoke test, and a pack dry-run.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -15,6 +15,9 @@ fi
 
 echo "== npm test =="
 npm test
+
+echo "== npm run lint =="
+npm run lint
 
 echo "== npm run typecheck =="
 npm run typecheck
