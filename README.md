@@ -22,9 +22,18 @@ tok/s ▃▆▇▇█▆▄█▆ 43.0 · avg 41.0 · pk 45.0 · ttft 0.8s      
 tok/s idle                                               nothing running
 ```
 
+When the footer is narrower than the line, details drop out least-important-first instead of wrapping:
+
+```
+tok/s ▃▆▇▇█▆▄ 42.0 ▲15% · avg 38.2 · pk 45.0              ttft omitted
+tok/s ▃▆▇▇█▆▄ 42.0 ▲15% · avg 38.2                        peak omitted too
+tok/s ▃▆▇ 42.0 ▲15%                                       avg gone, graph trimmed
+```
+
 The rate and trend are color-coded: red below `slowTps`, yellow up to `fastTps`, green at or above it.
 
 - **VU meter** — one half-block column per second, growing as the turn progresses (no reserved empty space), scaled to the turn's busiest second
+- **One-row fit** — when the footer has less room than the line needs, details are omitted from least to most important until it fits one row: elapsed, token count and TTFT first, then peak, then the average; the label, graph, rate and trend always stay, and the graph only ever sheds its oldest columns. Details come back when the terminal widens
 - **Average** — active generation speed: tokens per second over the time actually spent streaming, so tool calls and the gaps between model steps don't drag it down
 - **Held frame** — when a turn ends the graph, rate, average, peak, and TTFT freeze and stay on screen until the next turn produces tokens
 - **Exact totals** — on completion the graph and peak are rescaled to the provider's reported token counts, summed across every step of the turn

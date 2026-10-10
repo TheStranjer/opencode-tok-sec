@@ -7,7 +7,7 @@
 import type { Context } from "@opencode/plugin/tui/context"
 import type { DisplayOptions, VuScale } from "./display.ts"
 import { Plugin } from "@opencode/plugin/tui"
-import { Show, createSignal } from "solid-js"
+import { Show, createSignal, onCleanup } from "solid-js"
 import type { JSX } from "solid-js"
 import type { MeterViewProps } from "./view.ts"
 import { createMeterController } from "./controller.ts"
@@ -61,15 +61,44 @@ const DEFAULTS: ResolvedOptions = {
 
 /**
  * The one-line meter view mounted into the prompt footer.
+ *
+ * The line is kept to a single footer row by tracking the width it actually
+ * has: seeded from the terminal columns, narrowed whenever the text node's own
+ * layout box is resized (Yoga shrinks it below the content and wraps once it
+ * does not fit), and re-opened to the terminal width on a renderer resize so
+ * details that were omitted come back when the terminal grows again. The view
+ * then omits details from least to most important until the line fits.
  * @param props - Context, slot input, store, invalidation signals, options.
  * @returns The footer status element, or nothing when unmounted.
  */
 function MeterLine(props: MeterViewProps): JSX.Element {
-  const view = createMeterView(props)
+  const [width, setWidth] = createSignal<number | undefined>(props.context.renderer.width),
+    onRendererResize = (): void => {
+      setWidth(props.context.renderer.width)
+    },
+    view = createMeterView(props, width)
+
+  props.context.renderer.on("resize", onRendererResize)
+  onCleanup((): void => {
+    props.context.renderer.off("resize", onRendererResize)
+  })
 
   return (
     <Show when={view.shown()}>
-      <text fg={view.tint()}>{view.text()}</text>
+      <text
+        ref={(element): void => {
+          const report = (): void => {
+            setWidth(element.width)
+          }
+          element.on("resize", report)
+          element.once("destroyed", (): void => {
+            element.off("resize", report)
+          })
+        }}
+        fg={view.tint()}
+      >
+        {view.text()}
+      </text>
     </Show>
   )
 }

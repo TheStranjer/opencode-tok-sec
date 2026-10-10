@@ -16,7 +16,7 @@
 import type { Context, SlotMap } from "@opencode/plugin/tui/context"
 import type { DisplayOptions, Tier } from "./display.ts"
 import { createMemo } from "solid-js"
-import { formatLine, hasData, rateTier } from "./display.ts"
+import { formatLineFitting, hasData, rateTier } from "./display.ts"
 import type { MeterController } from "./controller.ts"
 import type { RGBA } from "@opentui/core"
 import type { Snapshot } from "./meter.ts"
@@ -77,9 +77,14 @@ function tierColor(theme: Context["theme"], tier: Tier): RGBA {
 /**
  * Build the footer line's reactive graph for one mounted slot claim.
  * @param props - Slot input, meter store, invalidation signals, options.
+ * @param width - Columns available on the footer row, when the renderer knows.
+ * When absent or unconstrained the line is never trimmed.
  * @returns The frame and everything the footer renders from it.
  */
-export function createMeterView(props: MeterViewProps): MeterView {
+export function createMeterView(
+  props: MeterViewProps,
+  width?: () => number | undefined,
+): MeterView {
   const { options } = props,
     frame = createMemo((): Snapshot | undefined => {
       props.rev()
@@ -97,7 +102,7 @@ export function createMeterView(props: MeterViewProps): MeterView {
       if (state === undefined || !live()) {
         return options.alwaysShow ? `${options.label} ${options.idleText}` : ""
       }
-      return formatLine(state, options)
+      return formatLineFitting(state, options, width?.())
     }),
     tint = createMemo((): RGBA => {
       const state = frame(),
