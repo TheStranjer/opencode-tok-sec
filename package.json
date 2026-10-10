@@ -35,7 +35,7 @@
     "opencode": ">=2.0.0"
   },
   "scripts": {
-    "test": "node --conditions=browser --import tsx --test test/*.test.ts",
+    "test": "sh scripts/test.sh",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "typecheck": "tsc --noEmit -p tsconfig.json",
