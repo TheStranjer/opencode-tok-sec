@@ -106,7 +106,7 @@
         "allow": [
           { "from": "package", "name": ["Context", "Data", "SlotMap", "UI", "PromptFooterInput"], "package": "@opencode/plugin" },
           { "from": "package", "name": ["ResolvedTheme"], "package": "@opencode/theme" },
-          { "from": "package", "name": ["RGBA"], "package": "@opentui/core" },
+          { "from": "package", "name": ["CliRenderer", "RGBA", "TextRenderable"], "package": "@opentui/core" },
           { "from": "lib", "name": ["Array", "Map", "TextEncoder"] }
         ]
       }
@@ -181,6 +181,9 @@
         "eslint/no-magic-numbers": "off",
         "eslint/sort-keys": "off",
         "eslint/no-await-in-loop": "off",
+        // Async is the only shape node:test callbacks and the native test
+        // renderer's bootstrapping can have; banning it bans the test suite.
+        "oxc/no-async-await": "off",
         "eslint/func-style": "off",
         "typescript/no-explicit-any": "off",
         "typescript/no-unsafe-argument": "off",
