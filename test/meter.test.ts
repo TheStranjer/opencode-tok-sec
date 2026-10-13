@@ -122,11 +122,11 @@ describe("formatLine", () => {
   }
 
   it("renders the default line", () => {
-    assert.equal(formatLine(base, options), "tok/s ▁▃▄▆ 42.5 ▲18% · avg 38.2 · pk 61.0 · ttft 0.8s")
+    assert.equal(formatLine(base, options), "tok/s ▁▃▄▆ 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s")
   })
 
   it("omits the graph when showVu is false", () => {
-    assert.equal(formatLine(base, { ...options, showVu: false }), "tok/s 42.5 ▲18% · avg 38.2 · pk 61.0 · ttft 0.8s")
+    assert.equal(formatLine(base, { ...options, showVu: false }), "tok/s 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s")
   })
 
   it("omits the trend when showTrend is false", () => {
@@ -146,12 +146,46 @@ describe("formatLine", () => {
 
   it("omits the graph entirely when there are no columns", () => {
     const line = formatLine({ ...base, vu: [] }, options)
-    assert.equal(line, "tok/s 42.5 ▲18% · avg 38.2 · pk 61.0 · ttft 0.8s")
+    assert.equal(line, "tok/s 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s")
   })
 
   it("omits ttft when it is unknown", () => {
     const line = formatLine({ ...base, ttftMs: undefined }, options)
     assert.ok(line.endsWith("· avg 38.2 · pk 61.0"))
+  })
+
+  it("pads the trend percentage to three digit slots", () => {
+    const tail = " · avg 38.2 · pk 61.0 · ttft 0.8s"
+    assert.equal(formatLine({ ...base, trendPct: 130 }, options), `tok/s ▁▃▄▆ 42.5 ▲130%${tail}`)
+    assert.equal(formatLine({ ...base, trendPct: 18 }, options), `tok/s ▁▃▄▆ 42.5 ▲ 18%${tail}`)
+    assert.equal(formatLine({ ...base, trendPct: 8 }, options), `tok/s ▁▃▄▆ 42.5 ▲  8%${tail}`)
+    assert.equal(formatLine({ ...base, trendPct: 9.4 }, options), `tok/s ▁▃▄▆ 42.5 ▲  9%${tail}`)
+    assert.equal(
+      formatLine({ ...base, trend: "down", trendPct: 8 }, options),
+      `tok/s ▁▃▄▆ 42.5 ▼  8%${tail}`,
+    )
+  })
+
+  it("holds the segments after the trend still as the digits change", () => {
+    /* Same width whatever the digits, and the same tail at the same offset: a
+     * percentage gaining a column never shifts what follows it. */
+    const widest = formatLine({ ...base, trendPct: 130 }, options),
+      offset = widest.indexOf(" · ")
+    for (const trendPct of [1, 8, 18, 130]) {
+      const line = formatLine({ ...base, trendPct }, options)
+      assert.equal(line.length, widest.length, line)
+      assert.equal(line.slice(offset), widest.slice(offset), line)
+    }
+  })
+
+  it("lets a wider percentage outgrow the reserved slots", () => {
+    assert.ok(formatLine({ ...base, trendPct: 4900 }, options).includes("▲4900%"))
+  })
+
+  it("pads nothing when the trend has no percentage", () => {
+    const line = formatLine({ ...base, trend: "flat", trendPct: 0 }, options)
+    assert.ok(line.includes("▬ "), line)
+    assert.ok(!line.includes("%"), line)
   })
 })
 
@@ -183,7 +217,7 @@ describe("formatLineFitting", () => {
     showTokenCount: true,
     showElapsed: true,
   },
-   FULL = "tok/s ▁▃▄▆ 42.5 ▲18% · avg 38.2 · pk 61.0 · ttft 0.8s · 1.2k tok · 12.0s"
+   FULL = "tok/s ▁▃▄▆ 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s · 1.2k tok · 12.0s"
 
   it("renders the full line when the width is no constraint", () => {
     for (const width of [undefined, Number.POSITIVE_INFINITY, 0, -4, Number.NaN, FULL.length, 200]) {
@@ -194,59 +228,88 @@ describe("formatLineFitting", () => {
   it("drops elapsed first, then the token count", () => {
     assert.equal(
       formatLineFitting(base, options, FULL.length - 1),
-      "tok/s ▁▃▄▆ 42.5 ▲18% · avg 38.2 · pk 61.0 · ttft 0.8s · 1.2k tok",
+      "tok/s ▁▃▄▆ 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s · 1.2k tok",
     )
     assert.equal(
       formatLineFitting(base, options, 58),
-      "tok/s ▁▃▄▆ 42.5 ▲18% · avg 38.2 · pk 61.0 · ttft 0.8s",
+      "tok/s ▁▃▄▆ 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s",
     )
   })
 
   it("drops the rest of the fourth tier before peak, and peak before avg", () => {
     assert.equal(
       formatLineFitting(base, options, 52),
-      "tok/s ▁▃▄▆ 42.5 ▲18% · avg 38.2 · pk 61.0",
+      "tok/s ▁▃▄▆ 42.5 ▲ 18% · avg 38.2 · pk 61.0",
     )
     assert.equal(
       formatLineFitting(base, options, 40),
-      "tok/s ▁▃▄▆ 42.5 ▲18% · avg 38.2",
+      "tok/s ▁▃▄▆ 42.5 ▲ 18% · avg 38.2",
     )
   })
 
   it("keeps the label, graph, rate and trend when every detail must go", () => {
-    assert.equal(formatLineFitting(base, options, 28), "tok/s ▁▃▄▆ 42.5 ▲18%")
+    assert.equal(formatLineFitting(base, options, 28), "tok/s ▁▃▄▆ 42.5 ▲ 18%")
   })
 
   it("sheds the oldest graph columns as a last resort", () => {
-    assert.equal(formatLineFitting(base, options, 18), "tok/s ▄▆ 42.5 ▲18%")
-    assert.equal(formatLineFitting(base, options, 17), "tok/s ▆ 42.5 ▲18%")
+    assert.equal(formatLineFitting(base, options, 20), "tok/s ▃▄▆ 42.5 ▲ 18%")
+    assert.equal(formatLineFitting(base, options, 19), "tok/s ▄▆ 42.5 ▲ 18%")
+    assert.equal(formatLineFitting(base, options, 18), "tok/s ▆ 42.5 ▲ 18%")
+  })
+
+  it("trades the whole graph for the trend's reserved width", () => {
+    for (const width of [17, 16]) {
+      assert.equal(formatLineFitting(base, options, width), "tok/s 42.5 ▲ 18%", `width ${width}`)
+    }
+  })
+
+  it("drops the trend once the row cannot hold its padding", () => {
+    /* The trend costs six columns: its separating space, the arrow, three digit
+     * slots and the sign. At 15 the head cannot hold them, so the trend goes
+     * and the columns its reservation held back come back as graph. */
+    assert.equal(formatLineFitting(base, options, 15), "tok/s ▁▃▄▆ 42.5")
+    assert.equal(formatLineFitting(base, options, 13), "tok/s ▄▆ 42.5")
+    assert.ok(!formatLineFitting(base, options, 15).includes("▲"))
+  })
+
+  it("fits the trend on its padding, not on the digits currently shown", () => {
+    /* A one digit percentage is just as much room as `▲130%`: the padding is
+     * what the fitter measures, so a percentage growing to three digits can
+     * never push the line onto a second row. */
+    for (const trendPct of [2, 18, 130]) {
+      const shown = formatLineFitting({ ...base, trendPct }, options, 16),
+        dropped = formatLineFitting({ ...base, trendPct }, options, 15)
+      assert.ok(shown.includes("▲"), `pct ${trendPct}: ${shown}`)
+      assert.equal(shown.length, 16, shown)
+      assert.ok(!dropped.includes("▲"), `pct ${trendPct}: ${dropped}`)
+    }
   })
 
   it("holds the irreducible core when even that cannot fit", () => {
-    for (const width of [16, 10, 5, 1]) {
-      assert.equal(formatLineFitting(base, options, width), "tok/s 42.5 ▲18%", `width ${width}`)
+    for (const width of [9, 5, 1]) {
+      assert.equal(formatLineFitting(base, options, width), "tok/s 42.5", `width ${width}`)
     }
   })
 
   it("fits around segments the user already disabled", () => {
     assert.equal(
       formatLineFitting(base, { ...options, showAvg: false }, 40),
-      "tok/s ▁▃▄▆ 42.5 ▲18% · pk 61.0",
+      "tok/s ▁▃▄▆ 42.5 ▲ 18% · pk 61.0",
     )
-    assert.equal(formatLineFitting(base, { ...options, showVu: false }, 20), "tok/s 42.5 ▲18%")
+    assert.equal(formatLineFitting(base, { ...options, showVu: false }, 20), "tok/s 42.5 ▲ 18%")
   })
 
   it("never grows the line past the width it was given when anything fits", () => {
     for (let width = 1; width < FULL.length; width += 1) {
       const line = formatLineFitting(base, options, width)
-      assert.ok(line.length <= width || line === "tok/s 42.5 ▲18%", `width ${width}: ${line}`)
+      assert.ok(line.length <= width || line === "tok/s 42.5", `width ${width}: ${line}`)
     }
   })
 
   it("drops segments that are absent from the line without shifting the rest", () => {
     assert.equal(
       formatLineFitting({ ...base, ttftMs: undefined }, options, 58),
-      "tok/s ▁▃▄▆ 42.5 ▲18% · avg 38.2 · pk 61.0 · 1.2k tok",
+      "tok/s ▁▃▄▆ 42.5 ▲ 18% · avg 38.2 · pk 61.0 · 1.2k tok",
     )
     assert.equal(
       formatLineFitting({ ...base, trend: "none", trendPct: 0 }, options, 52),

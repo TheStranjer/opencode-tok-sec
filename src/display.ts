@@ -31,6 +31,14 @@ const KILO = 1000,
   MAX_TAIL_RANK = 5,
   MEGA = 1_000_000,
 
+  /**
+   * Digit slots reserved for the trend percentage. A second-to-second swing is
+   * pretty much always three digits wide (e.g. `▲130%`), so the number is
+   * right-aligned in this field: the segment keeps one width as the value
+   * changes, and the one-row fit measures that width, not the digits on screen.
+   */
+  TREND_DIGITS = 3,
+
   TREND_GLYPHS: Record<Trend, string> = {
     down: "▼",
     flat: "▬",
@@ -189,7 +197,9 @@ function graphSegment(options: DisplayOptions, snapshot: Snapshot, columns: numb
 }
 
 /**
- * The trend glyph with percentage, or empty when trend is off or unknown.
+ * The trend glyph with a fixed-width percentage, or empty when trend is off or
+ * unknown. The digits sit in a `TREND_DIGITS` wide field so `▲ 10%` and
+ * `▲130%` take the same room and the segments after them never shift.
  * @param options - Which segments to include in the line.
  * @param snapshot - Fully computed meter snapshot to render.
  * @returns The trend chunk, possibly empty.
@@ -202,7 +212,11 @@ function trendSegment(options: DisplayOptions, snapshot: Snapshot): string {
   if (glyph.length === 0) {
     return ""
   }
-  return snapshot.trendPct > 0 ? `${glyph}${Math.round(snapshot.trendPct)}%` : glyph
+  if (snapshot.trendPct <= 0) {
+    return glyph
+  }
+  const digits = String(Math.round(snapshot.trendPct)).padStart(TREND_DIGITS, " ")
+  return `${glyph}${digits}%`
 }
 
 /** One tail segment with the order it is dropped in when the line must fit. */
@@ -277,11 +291,42 @@ export function formatLine(snapshot: Snapshot, options: DisplayOptions): string 
 }
 
 /**
+ * The detail-free head — label, graph, rate and trend — narrowed to one row.
+ *
+ * The graph sheds its oldest columns first, one per step. The trend is only
+ * ever shown at the width its padding reserves, so once even a bare graph
+ * cannot make room for it the head drops the trend and hands the columns that
+ * reservation held back to the graph.
+ * @param options - Which segments to include in the line.
+ * @param snapshot - Fully computed meter snapshot to render.
+ * @param available - Columns the footer row has.
+ * @returns The most detailed head that fits, else the most compact one.
+ */
+function fitHead(options: DisplayOptions, snapshot: Snapshot, available: number): string {
+  for (let columns = options.vuColumns - 1; columns >= 0; columns -= 1) {
+    const line = buildLine(options, snapshot, [], columns)
+    if (line.length <= available) {
+      return line
+    }
+  }
+  const bare: DisplayOptions = { ...options, showTrend: false }
+  for (let columns = options.vuColumns; columns >= 0; columns -= 1) {
+    const line = buildLine(bare, snapshot, [], columns)
+    if (line.length <= available) {
+      return line
+    }
+  }
+  return buildLine(bare, snapshot, [], 0)
+}
+
+/**
  * Build the display line, omitting unimportant details until it fits one row.
  *
  * Drop order follows the importance list: elapsed, token count and TTFT go
- * first, then peak, then the average. The label, rate and trend never drop;
- * the graph only ever sheds its oldest columns, and disappears last of all.
+ * first, then peak, then the average. The label and rate never drop; the graph
+ * only ever sheds its oldest columns, and the trend goes last of all. It is
+ * held to the width its padding reserves, so a row too narrow for `▲130%`
+ * never shows a skinnier trend and then wraps when the number grows.
  * A width that is absent, fractional-truncated to zero, NaN or infinite means
  * "no constraint" and renders the full line.
  * @param snapshot - Fully computed meter snapshot to render.
@@ -313,11 +358,5 @@ export function formatLineFitting(
       return line
     }
   }
-  for (let columns = options.vuColumns - 1; columns >= 0; columns -= 1) {
-    line = buildLine(options, snapshot, [], columns)
-    if (line.length <= available) {
-      return line
-    }
-  }
-  return line
+  return fitHead(options, snapshot, available)
 }
