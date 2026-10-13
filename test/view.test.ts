@@ -241,13 +241,13 @@ describe("createMeterView", () => {
     const [width, setWidth] = createSignal<number | undefined>(undefined)
     withView(
       (view) => {
-        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲10% · avg 40.0 · pk 45.0 · ttft 0.8s")
+        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲ 10% · avg 40.0 · pk 45.0 · ttft 0.8s")
         setWidth(44)
-        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲10% · avg 40.0 · pk 45.0")
-        setWidth(30)
-        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲10% · avg 40.0")
+        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲ 10% · avg 40.0 · pk 45.0")
+        setWidth(31)
+        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲ 10% · avg 40.0")
         setWidth(24)
-        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲10%")
+        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲ 10%")
       },
       { store: double.store },
       width,
@@ -259,10 +259,22 @@ describe("createMeterView", () => {
     double.set(frame())
     withView(
       (view) => {
-        assert.equal(view.text(), "tok/s 42.0 ▲10%")
+        assert.equal(view.text(), "tok/s 42.0 ▲ 10%")
       },
       { store: double.store },
-      () => 10,
+      () => 16,
+    )
+  })
+
+  it("drops the trend when the row has no room for its padding", () => {
+    const double = storeDouble()
+    double.set(frame())
+    withView(
+      (view) => {
+        assert.equal(view.text(), "tok/s ▃▆█ 42.0")
+      },
+      { store: double.store },
+      () => 15,
     )
   })
 
@@ -272,7 +284,7 @@ describe("createMeterView", () => {
     const [width, setWidth] = createSignal<number | undefined>(24)
     withView(
       (view) => {
-        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲10%")
+        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲ 10%")
         setWidth(undefined)
         assert.equal(view.text(), formatLine(frame(), OPTIONS))
       },
