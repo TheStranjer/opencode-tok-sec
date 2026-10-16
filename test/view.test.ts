@@ -243,18 +243,18 @@ describe("createMeterView", () => {
       (view) => {
         assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲ 10% · avg 40.0 · pk 45.0 · ttft 0.8s")
         setWidth(44)
-        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲ 10% · avg 40.0 · pk 45.0")
+        assert.equal(view.text(), "tok/s 42.0 ▲ 10% · avg 40.0 · pk 45.0")
         setWidth(31)
-        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲ 10% · avg 40.0")
+        assert.equal(view.text(), "tok/s 42.0 ▲ 10% · avg 40.0")
         setWidth(24)
-        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲ 10%")
+        assert.equal(view.text(), "tok/s 42.0 ▲ 10%")
       },
       { store: double.store },
       width,
     )
   })
 
-  it("keeps the core and trims graph columns when the row cannot fit the head", () => {
+  it("drops the graph whole when the row cannot fit it beside the details", () => {
     const double = storeDouble()
     double.set(frame())
     withView(
@@ -271,7 +271,7 @@ describe("createMeterView", () => {
     double.set(frame())
     withView(
       (view) => {
-        assert.equal(view.text(), "tok/s ▃▆█ 42.0")
+        assert.equal(view.text(), "tok/s 42.0")
       },
       { store: double.store },
       () => 15,
@@ -284,7 +284,7 @@ describe("createMeterView", () => {
     const [width, setWidth] = createSignal<number | undefined>(24)
     withView(
       (view) => {
-        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲ 10%")
+        assert.equal(view.text(), "tok/s 42.0 ▲ 10%")
         setWidth(undefined)
         assert.equal(view.text(), formatLine(frame(), OPTIONS))
       },

@@ -27,16 +27,17 @@ The trend percentage sits in a three digit field, so `▲ 12%`, `▲  2%` and `�
 When the footer is narrower than the line, details drop out least-important-first instead of wrapping:
 
 ```
-tok/s ▃▆▇▇█▆▄ 42.0 ▲ 15% · avg 38.2 · pk 45.0              ttft omitted
-tok/s ▃▆▇▇█▆▄ 42.0 ▲ 15% · avg 38.2                        peak omitted too
-tok/s ▃▆▇ 42.0 ▲ 15%                                       avg gone, graph trimmed
-tok/s ▇▇█▆▄ 42.0                                           trend dropped, graph back
+tok/s 42.0 ▲ 15% · avg 38.2 · pk 45.0 · ttft 0.8s          graph gone whole, before any stat
+tok/s 42.0 ▲ 15% · avg 38.2 · pk 45.0                      ttft omitted
+tok/s 42.0 ▲ 15% · avg 38.2                                peak omitted too
+tok/s 42.0 ▲ 15%                                           avg gone
+tok/s 42.0                                                 trend dropped last
 ```
 
 The rate and trend are color-coded: red below `slowTps`, yellow up to `fastTps`, green at or above it.
 
 - **VU meter** — one half-block column per second, growing as the turn progresses (no reserved empty space), scaled to the turn's busiest second
-- **One-row fit** — when the footer has less room than the line needs, details are omitted from least to most important until it fits one row: elapsed, token count and TTFT first, then peak, then the average; the label and rate always stay, the graph only ever sheds its oldest columns, and the trend is the last thing to go. Details come back when the terminal widens
+- **One-row fit** — when the footer has less room than the line needs, details are omitted from least to most important until it fits one row: elapsed and the token count first, then the graph, then TTFT, then peak, then the average; the label and rate always stay, the graph drops as a whole unit — it is never trimmed column by column — and the trend is the last thing to go. Details come back when the terminal widens
 - **Average** — active generation speed: tokens per second over the time actually spent streaming, so tool calls and the gaps between model steps don't drag it down
 - **Held frame** — when a turn ends the graph, rate, average, peak, and TTFT freeze and stay on screen until the next turn produces tokens
 - **Exact totals** — on completion the graph and peak are rescaled to the provider's reported token counts, summed across every step of the turn

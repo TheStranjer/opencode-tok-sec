@@ -26,9 +26,16 @@ export type DisplayOptions = {
   readonly vuScale: VuScale
 }
 
-const KILO = 1000,
-  /** Highest tail drop rank; fitting removes ranks from here down to 1. */
-  MAX_TAIL_RANK = 5,
+const
+  /** Columns `buildLine` gets once the graph has dropped: it renders none. */
+  GRAPH_DROP_COLUMNS = 0,
+
+  /** The graph's own drop rank: it leaves whole, never trimmed column by column. */
+  GRAPH_DROP_RANK = 4,
+  KILO = 1000,
+
+  /** Highest drop rank; fitting removes ranks from here down to 1. */
+  MAX_DROP_RANK = 6,
   MEGA = 1_000_000,
 
   /**
@@ -178,7 +185,9 @@ export function hasData(snapshot: Snapshot | undefined): boolean {
  * Graph columns plus the rate, as the leading chunk of the display line.
  * @param options - Which segments to include in the line.
  * @param snapshot - Fully computed meter snapshot to render.
- * @param columns - VU columns the graph may render (fitting trims this last).
+ * @param columns - VU columns the graph may render; fitting passes either the
+ * full `vuColumns` or 0, and 0 — like `showVu` off or an empty history —
+ * leaves this chunk as the bare rate.
  * @returns The label-adjacent first chunk of the display line.
  */
 function graphSegment(options: DisplayOptions, snapshot: Snapshot, columns: number): string {
@@ -227,9 +236,11 @@ type TailPart = {
 
 /**
  * The stat segments with their drop ranks: rank 1 is kept longest and higher
- * ranks are omitted first. Importance order per the ticket is avg, then peak,
- * then everything else (ttft, token count, elapsed), so the tail of the line
- * carries the higher ranks and loses them first.
+ * ranks are omitted first. Drop order per the ticket is elapsed, token count,
+ * the graph, then ttft, peak and avg, so avg is rank 1, peak rank 2, ttft
+ * rank 3, the token count rank 5 and elapsed rank 6. The graph is not a tail
+ * segment — it leads the head — but it owns rank 4 (`GRAPH_DROP_RANK`) so
+ * the fitter drops it whole between the token count and the ttft.
  * @param options - Which segments to include in the line.
  * @param snapshot - Fully computed meter snapshot to render.
  * @returns The enabled stat segments in display order, with drop ranks.
@@ -246,10 +257,10 @@ function tailParts(options: DisplayOptions, snapshot: Snapshot): Array<TailPart>
     tail.push({ rank: 3, text: `ttft ${formatClock(snapshot.ttftMs)}` })
   }
   if (options.showTokenCount) {
-    tail.push({ rank: 4, text: `${formatCount(snapshot.tokens)} tok` })
+    tail.push({ rank: 5, text: `${formatCount(snapshot.tokens)} tok` })
   }
   if (options.showElapsed) {
-    tail.push({ rank: 5, text: formatClock(snapshot.elapsed) })
+    tail.push({ rank: 6, text: formatClock(snapshot.elapsed) })
   }
   return tail
 }
@@ -291,42 +302,37 @@ export function formatLine(snapshot: Snapshot, options: DisplayOptions): string 
 }
 
 /**
- * The detail-free head — label, graph, rate and trend — narrowed to one row.
+ * The detail-free head — label, rate and trend — narrowed to one row.
  *
- * The graph sheds its oldest columns first, one per step. The trend is only
- * ever shown at the width its padding reserves, so once even a bare graph
- * cannot make room for it the head drops the trend and hands the columns that
- * reservation held back to the graph.
+ * The graph never shrinks here: it is a whole-unit droppable segment and its
+ * rank was already applied by `formatLineFitting`, so the head is measured
+ * with the graph gone, `label rate` plus the trend. The trend is only ever
+ * shown at the width its padding reserves; once even that cannot fit, the
+ * fallback drops the trend and keeps the irreducible `label rate` core.
  * @param options - Which segments to include in the line.
  * @param snapshot - Fully computed meter snapshot to render.
  * @param available - Columns the footer row has.
- * @returns The most detailed head that fits, else the most compact one.
+ * @returns The trended head if it fits, else the label-and-rate core.
  */
 function fitHead(options: DisplayOptions, snapshot: Snapshot, available: number): string {
-  for (let columns = options.vuColumns - 1; columns >= 0; columns -= 1) {
-    const line = buildLine(options, snapshot, [], columns)
-    if (line.length <= available) {
-      return line
-    }
+  const head = buildLine(options, snapshot, [], GRAPH_DROP_COLUMNS)
+  if (head.length <= available) {
+    return head
   }
   const bare: DisplayOptions = { ...options, showTrend: false }
-  for (let columns = options.vuColumns; columns >= 0; columns -= 1) {
-    const line = buildLine(bare, snapshot, [], columns)
-    if (line.length <= available) {
-      return line
-    }
-  }
-  return buildLine(bare, snapshot, [], 0)
+  return buildLine(bare, snapshot, [], GRAPH_DROP_COLUMNS)
 }
 
 /**
  * Build the display line, omitting unimportant details until it fits one row.
  *
- * Drop order follows the importance list: elapsed, token count and TTFT go
- * first, then peak, then the average. The label and rate never drop; the graph
- * only ever sheds its oldest columns, and the trend goes last of all. It is
- * held to the width its padding reserves, so a row too narrow for `▲130%`
- * never shows a skinnier trend and then wraps when the number grows.
+ * Drop order follows the importance list: elapsed and the token count go
+ * first, then the graph, then TTFT, then peak, then the average. The graph is
+ * removed whole at its rank, never trimmed column by column: it is either at
+ * the full `options.vuColumns` or absent, and once dropped it stays dropped.
+ * The label and rate never drop, and the trend goes last of all. It is held
+ * to the width its padding reserves, so a row too narrow for `▲130%` never
+ * shows a skinnier trend and then wraps when the number grows.
  * A width that is absent, fractional-truncated to zero, NaN or infinite means
  * "no constraint" and renders the full line.
  * @param snapshot - Fully computed meter snapshot to render.
@@ -350,10 +356,14 @@ export function formatLineFitting(
   if (line.length <= available) {
     return line
   }
-  let kept = parts
-  for (let rank = MAX_TAIL_RANK; rank >= 1; rank -= 1) {
+  let columns = options.vuColumns,
+    kept = parts
+  for (let rank = MAX_DROP_RANK; rank >= 1; rank -= 1) {
     kept = kept.filter((part): boolean => part.rank !== rank)
-    line = buildLine(options, snapshot, kept, options.vuColumns)
+    if (rank === GRAPH_DROP_RANK) {
+      columns = GRAPH_DROP_COLUMNS
+    }
+    line = buildLine(options, snapshot, kept, columns)
     if (line.length <= available) {
       return line
     }

@@ -70,6 +70,9 @@ const COMMAND = " ctrl+p command",
   /** Columns the two fixed hints take off the 80-column footer row. */
   HINT_COLUMNS = ESC.length + COMMAND.length,
 
+  /** Any VU block glyph, present only while the graph has not been dropped. */
+  VU_GLYPH = /[▁▂▃▄▅▆▇█]/u,
+
   /** The line as trimmed to the room the row leaves; detail-free by design. */
   NARROW = formatLineFitting(SNAPSHOT, OPTIONS, TERMINAL_WIDTH - HINT_COLUMNS)
 
@@ -138,7 +141,11 @@ describe("trackFooterWidth", () => {
       assert.equal(harness.meter.height, 1, "the line renders on one footer row")
       assert.equal(harness.meter.virtualLineCount, 1, "no wrapped virtual lines")
       assert.equal(harness.meter.plainText, NARROW, "the line is the one trimmed to the room left by the hints")
-      assert.ok(!harness.meter.plainText.includes("ttft"), `ttft detail omitted: ${harness.meter.plainText}`)
+      assert.ok(
+        !VU_GLYPH.test(harness.meter.plainText),
+        `the graph drops whole before any stat: ${harness.meter.plainText}`,
+      )
+      assert.ok(harness.meter.plainText.includes("ttft"), `the graph gave the row its room: ${harness.meter.plainText}`)
       assert.ok(harness.meter.plainText.includes("avg"), `the kept-most-important detail survives: ${harness.meter.plainText}`)
     } finally {
       harness.setup.renderer.destroy()
@@ -156,11 +163,11 @@ describe("trackFooterWidth", () => {
       await harness.setup.waitFor(
         (): boolean => harness.meter.plainText === NARROW && harness.meter.height === 1,
       )
-      assert.ok(!harness.meter.plainText.includes("ttft"), "ttft starts out omitted")
+      assert.ok(!VU_GLYPH.test(harness.meter.plainText), "the graph starts out omitted")
 
       harness.row.remove(harness.command)
       await harness.setup.waitFor(
-        (): boolean => harness.meter.plainText.includes("ttft") && harness.meter.height === 1,
+        (): boolean => harness.meter.plainText.includes("▃▆█") && harness.meter.height === 1,
       )
 
       assert.equal(harness.meter.plainText, formatLine(SNAPSHOT, OPTIONS), "details came back")

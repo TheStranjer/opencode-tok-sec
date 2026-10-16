@@ -236,39 +236,58 @@ describe("formatLineFitting", () => {
     )
   })
 
-  it("drops the rest of the fourth tier before peak, and peak before avg", () => {
+  it("drops the whole graph after the token count, before the ttft", () => {
+    /* The graph owns its own drop rank between the token count and the ttft:
+     * at 52 the 54-column line cannot fit and what goes is the graph, gone
+     * whole — ttft, peak and avg all survive next to the bare rate. */
     assert.equal(
       formatLineFitting(base, options, 52),
-      "tok/s ▁▃▄▆ 42.5 ▲ 18% · avg 38.2 · pk 61.0",
+      "tok/s 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s",
     )
     assert.equal(
-      formatLineFitting(base, options, 40),
-      "tok/s ▁▃▄▆ 42.5 ▲ 18% · avg 38.2",
+      formatLineFitting(base, options, 54),
+      "tok/s ▁▃▄▆ 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s",
     )
   })
 
-  it("keeps the label, graph, rate and trend when every detail must go", () => {
-    assert.equal(formatLineFitting(base, options, 28), "tok/s ▁▃▄▆ 42.5 ▲ 18%")
+  it("drops the ttft, then peak, then avg after the graph is gone", () => {
+    assert.equal(
+      formatLineFitting(base, options, 40),
+      "tok/s 42.5 ▲ 18% · avg 38.2 · pk 61.0",
+    )
+    assert.equal(
+      formatLineFitting(base, options, 36),
+      "tok/s 42.5 ▲ 18% · avg 38.2",
+    )
+    assert.equal(formatLineFitting(base, options, 26), "tok/s 42.5 ▲ 18%")
   })
 
-  it("sheds the oldest graph columns as a last resort", () => {
-    assert.equal(formatLineFitting(base, options, 20), "tok/s ▃▄▆ 42.5 ▲ 18%")
-    assert.equal(formatLineFitting(base, options, 19), "tok/s ▄▆ 42.5 ▲ 18%")
-    assert.equal(formatLineFitting(base, options, 18), "tok/s ▆ 42.5 ▲ 18%")
-  })
-
-  it("trades the whole graph for the trend's reserved width", () => {
-    for (const width of [17, 16]) {
-      assert.equal(formatLineFitting(base, options, width), "tok/s 42.5 ▲ 18%", `width ${width}`)
+  it("never renders a partial-width graph at any width", () => {
+    /* The graph is a whole-unit droppable: every fitted line either carries
+     * all four history columns or holds no VU glyph at all. A partial graph
+     * — any trimmed width — is never the answer. */
+    for (let width = 1; width <= FULL.length + 8; width += 1) {
+      const line = formatLineFitting(base, options, width)
+      assert.equal(
+        /[▁▂▃▄▅▆▇█]/u.test(line),
+        line.includes("▁▃▄▆"),
+        `width ${width}: ${line}`,
+      )
     }
+  })
+
+  it("keeps the label, rate and trend when every detail must go", () => {
+    assert.equal(formatLineFitting(base, options, 20), "tok/s 42.5 ▲ 18%")
+    assert.equal(formatLineFitting(base, options, 16), "tok/s 42.5 ▲ 18%")
   })
 
   it("drops the trend once the row cannot hold its padding", () => {
     /* The trend costs six columns: its separating space, the arrow, three digit
      * slots and the sign. At 15 the head cannot hold them, so the trend goes
-     * and the columns its reservation held back come back as graph. */
-    assert.equal(formatLineFitting(base, options, 15), "tok/s ▁▃▄▆ 42.5")
-    assert.equal(formatLineFitting(base, options, 13), "tok/s ▄▆ 42.5")
+     * and only the `label rate` core remains; the graph was dropped ranks
+     * before the trend and stays dropped. */
+    assert.equal(formatLineFitting(base, options, 15), "tok/s 42.5")
+    assert.equal(formatLineFitting(base, options, 13), "tok/s 42.5")
     assert.ok(!formatLineFitting(base, options, 15).includes("▲"))
   })
 
@@ -294,7 +313,7 @@ describe("formatLineFitting", () => {
   it("fits around segments the user already disabled", () => {
     assert.equal(
       formatLineFitting(base, { ...options, showAvg: false }, 40),
-      "tok/s ▁▃▄▆ 42.5 ▲ 18% · pk 61.0",
+      "tok/s 42.5 ▲ 18% · pk 61.0 · ttft 0.8s",
     )
     assert.equal(formatLineFitting(base, { ...options, showVu: false }, 20), "tok/s 42.5 ▲ 18%")
   })
