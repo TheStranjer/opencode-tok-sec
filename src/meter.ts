@@ -377,8 +377,10 @@ export class TpsMeter {
 
   /**
    * One column per second since the turn's first token, capped to the
-   * requested width. Leading and trailing empty seconds are dropped so the
-   * graph starts at real data instead of leaving a gap after the label.
+   * requested width. Leading and trailing empty seconds are dropped, so the
+   * bars run up to the newest second that actually streamed. That trims
+   * content, not width: `renderVu` pads the graph out to its fixed full width
+   * whatever comes back here, so a short history renders as wide as a full one.
    * @param at - Frame timestamp the columns are computed for.
    * @param cap - Maximum number of columns to return.
    * @returns Per-second token counts, trimmed of empty edges.

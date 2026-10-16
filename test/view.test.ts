@@ -60,6 +60,13 @@ const CONFIG = { idleTimeoutMs: 1500, minSpanMs: 300, rollingWindowMs: 5000 },
     },
   },
 
+  /** A default `frame()`'s history, right-aligned in the twelve columns the
+   * graph always holds. */
+  GRAPH = "▃▆█".padStart(OPTIONS.vuColumns),
+
+  /** The same twelve columns with no history in them yet. */
+  BLANKS = " ".repeat(OPTIONS.vuColumns),
+
   CONTEXT = { theme: THEME } as unknown as Context
 
 /**
@@ -235,13 +242,28 @@ describe("createMeterView", () => {
     )
   })
 
+  it("holds the graph's columns before the first bucket reaches the footer", () => {
+    /* A frame with data but no per-second history yet still spends the full
+     * twelve columns on the graph, so the rate and the stats after it sit at
+     * the same offset as they do once the turn's seconds have landed. */
+    const double = storeDouble()
+    double.set(frame({ vu: [] }))
+    withView(
+      (view) => {
+        assert.ok(view.text().startsWith(`${OPTIONS.label} ${BLANKS}`), view.text())
+        assert.equal(view.text().length, formatLine(frame(), OPTIONS).length, view.text())
+      },
+      { store: double.store },
+    )
+  })
+
   it("omits details down the importance list as the row narrows", () => {
     const double = storeDouble()
     double.set(frame())
     const [width, setWidth] = createSignal<number | undefined>(undefined)
     withView(
       (view) => {
-        assert.equal(view.text(), "tok/s ▃▆█ 42.0 ▲ 10% · avg 40.0 · pk 45.0 · ttft 0.8s")
+        assert.equal(view.text(), `tok/s ${GRAPH} 42.0 ▲ 10% · avg 40.0 · pk 45.0 · ttft 0.8s`)
         setWidth(44)
         assert.equal(view.text(), "tok/s 42.0 ▲ 10% · avg 40.0 · pk 45.0")
         setWidth(31)

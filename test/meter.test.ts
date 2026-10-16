@@ -6,6 +6,7 @@ import type { DisplayOptions } from "../src/display.ts"
 import type { Sample, Snapshot } from "../src/meter.ts"
 
 const CONFIG = { rollingWindowMs: 1000, idleTimeoutMs: 500, minSpanMs: 200 },
+ SECOND_MS = 1000,
  WIDE = { rollingWindowMs: 60_000, idleTimeoutMs: 60_000, minSpanMs: 200 }
 
 describe("approxTokens", () => {
@@ -119,10 +120,14 @@ describe("formatLine", () => {
     showTtft: true,
     showTokenCount: false,
     showElapsed: false,
-  }
+  },
+   /* The graph is a fixed twelve columns, so the four buckets of `base` sit at
+    * its right edge, next to the rate, behind eight blank cells. */
+   GRAPH = "▁▃▄▆".padStart(options.vuColumns),
+   BLANKS = " ".repeat(options.vuColumns)
 
   it("renders the default line", () => {
-    assert.equal(formatLine(base, options), "tok/s ▁▃▄▆ 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s")
+    assert.equal(formatLine(base, options), `tok/s ${GRAPH} 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s`)
   })
 
   it("omits the graph when showVu is false", () => {
@@ -130,13 +135,13 @@ describe("formatLine", () => {
   })
 
   it("omits the trend when showTrend is false", () => {
-    assert.equal(formatLine(base, { ...options, showTrend: false }), "tok/s ▁▃▄▆ 42.5 · avg 38.2 · pk 61.0 · ttft 0.8s")
+    assert.equal(formatLine(base, { ...options, showTrend: false }), `tok/s ${GRAPH} 42.5 · avg 38.2 · pk 61.0 · ttft 0.8s`)
   })
 
   it("hides the trend while the rate is inactive", () => {
     const line = formatLine({ ...base, rate: -1, trend: "none" }, options)
     assert.ok(!line.includes("▲"))
-    assert.ok(line.includes("tok/s ▁▃▄▆ -"))
+    assert.ok(line.includes(`${GRAPH} -`), line)
   })
 
   it("adds token count and elapsed when enabled", () => {
@@ -144,9 +149,22 @@ describe("formatLine", () => {
     assert.ok(line.endsWith("· avg 38.2 · pk 61.0 · ttft 0.8s · 1.2k tok · 12.0s"))
   })
 
+  it("holds the graph's full width before the first bucket arrives", () => {
+    /* An empty history is the one case where nothing but blanks is rendered,
+     * and even then the twelve cells are reserved: the line cannot jump when
+     * the turn's first second lands. */
+    assert.equal(
+      formatLine({ ...base, vu: [] }, options),
+      `tok/s ${BLANKS} 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s`,
+    )
+    assert.equal(formatLine({ ...base, vu: [] }, options).length, formatLine(base, options).length)
+  })
+
   it("omits the graph entirely when there are no columns", () => {
-    const line = formatLine({ ...base, vu: [] }, options)
-    assert.equal(line, "tok/s 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s")
+    assert.equal(
+      formatLine(base, { ...options, vuColumns: 0 }),
+      "tok/s 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s",
+    )
   })
 
   it("omits ttft when it is unknown", () => {
@@ -156,13 +174,13 @@ describe("formatLine", () => {
 
   it("pads the trend percentage to three digit slots", () => {
     const tail = " · avg 38.2 · pk 61.0 · ttft 0.8s"
-    assert.equal(formatLine({ ...base, trendPct: 130 }, options), `tok/s ▁▃▄▆ 42.5 ▲130%${tail}`)
-    assert.equal(formatLine({ ...base, trendPct: 18 }, options), `tok/s ▁▃▄▆ 42.5 ▲ 18%${tail}`)
-    assert.equal(formatLine({ ...base, trendPct: 8 }, options), `tok/s ▁▃▄▆ 42.5 ▲  8%${tail}`)
-    assert.equal(formatLine({ ...base, trendPct: 9.4 }, options), `tok/s ▁▃▄▆ 42.5 ▲  9%${tail}`)
+    assert.equal(formatLine({ ...base, trendPct: 130 }, options), `tok/s ${GRAPH} 42.5 ▲130%${tail}`)
+    assert.equal(formatLine({ ...base, trendPct: 18 }, options), `tok/s ${GRAPH} 42.5 ▲ 18%${tail}`)
+    assert.equal(formatLine({ ...base, trendPct: 8 }, options), `tok/s ${GRAPH} 42.5 ▲  8%${tail}`)
+    assert.equal(formatLine({ ...base, trendPct: 9.4 }, options), `tok/s ${GRAPH} 42.5 ▲  9%${tail}`)
     assert.equal(
       formatLine({ ...base, trend: "down", trendPct: 8 }, options),
-      `tok/s ▁▃▄▆ 42.5 ▼  8%${tail}`,
+      `tok/s ${GRAPH} 42.5 ▼  8%${tail}`,
     )
   })
 
@@ -217,7 +235,10 @@ describe("formatLineFitting", () => {
     showTokenCount: true,
     showElapsed: true,
   },
-   FULL = "tok/s ▁▃▄▆ 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s · 1.2k tok · 12.0s"
+   /* Twelve columns, always: the four buckets of `base` are right-aligned in
+    * them and the eight cells to their left stay blank. */
+   GRAPH = "▁▃▄▆".padStart(options.vuColumns),
+   FULL = `tok/s ${GRAPH} 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s · 1.2k tok · 12.0s`
 
   it("renders the full line when the width is no constraint", () => {
     for (const width of [undefined, Number.POSITIVE_INFINITY, 0, -4, Number.NaN, FULL.length, 200]) {
@@ -228,25 +249,26 @@ describe("formatLineFitting", () => {
   it("drops elapsed first, then the token count", () => {
     assert.equal(
       formatLineFitting(base, options, FULL.length - 1),
-      "tok/s ▁▃▄▆ 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s · 1.2k tok",
+      `tok/s ${GRAPH} 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s · 1.2k tok`,
     )
     assert.equal(
-      formatLineFitting(base, options, 58),
-      "tok/s ▁▃▄▆ 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s",
+      formatLineFitting(base, options, 66),
+      `tok/s ${GRAPH} 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s`,
     )
   })
 
   it("drops the whole graph after the token count, before the ttft", () => {
     /* The graph owns its own drop rank between the token count and the ttft:
-     * at 52 the 54-column line cannot fit and what goes is the graph, gone
-     * whole — ttft, peak and avg all survive next to the bare rate. */
+     * at 61 the 62-column line cannot fit and what goes is the graph, gone
+     * whole with all twelve of its columns — ttft, peak and avg all survive
+     * next to the bare rate. */
     assert.equal(
-      formatLineFitting(base, options, 52),
+      formatLineFitting(base, options, 61),
       "tok/s 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s",
     )
     assert.equal(
-      formatLineFitting(base, options, 54),
-      "tok/s ▁▃▄▆ 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s",
+      formatLineFitting(base, options, 62),
+      `tok/s ${GRAPH} 42.5 ▲ 18% · avg 38.2 · pk 61.0 · ttft 0.8s`,
     )
   })
 
@@ -263,14 +285,15 @@ describe("formatLineFitting", () => {
   })
 
   it("never renders a partial-width graph at any width", () => {
-    /* The graph is a whole-unit droppable: every fitted line either carries
-     * all four history columns or holds no VU glyph at all. A partial graph
-     * — any trimmed width — is never the answer. */
+    /* The graph is a whole-unit droppable of a fixed width: every fitted line
+     * either carries all twelve columns — the four history cells padded out to
+     * the full segment — or holds no VU glyph at all. A trimmed or unpadded
+     * graph, at any intermediate width, is never the answer. */
     for (let width = 1; width <= FULL.length + 8; width += 1) {
       const line = formatLineFitting(base, options, width)
       assert.equal(
         /[▁▂▃▄▅▆▇█]/u.test(line),
-        line.includes("▁▃▄▆"),
+        line.includes(GRAPH),
         `width ${width}: ${line}`,
       )
     }
@@ -327,13 +350,131 @@ describe("formatLineFitting", () => {
 
   it("drops segments that are absent from the line without shifting the rest", () => {
     assert.equal(
-      formatLineFitting({ ...base, ttftMs: undefined }, options, 58),
-      "tok/s ▁▃▄▆ 42.5 ▲ 18% · avg 38.2 · pk 61.0 · 1.2k tok",
+      formatLineFitting({ ...base, ttftMs: undefined }, options, 66),
+      `tok/s ${GRAPH} 42.5 ▲ 18% · avg 38.2 · pk 61.0 · 1.2k tok`,
     )
     assert.equal(
-      formatLineFitting({ ...base, trend: "none", trendPct: 0 }, options, 52),
-      "tok/s ▁▃▄▆ 42.5 · avg 38.2 · pk 61.0 · ttft 0.8s",
+      formatLineFitting({ ...base, trend: "none", trendPct: 0 }, options, 60),
+      `tok/s ${GRAPH} 42.5 · avg 38.2 · pk 61.0 · ttft 0.8s`,
     )
+  })
+})
+
+describe("fixed-width graph", () => {
+  const base: Snapshot = {
+    rate: 42.5,
+    avg: 38.2,
+    live: true,
+    settled: false,
+    tokens: 1200,
+    elapsed: 12_000,
+    peak: 61,
+    peakBucket: 55,
+    trend: "none",
+    trendPct: 0,
+    ttftMs: undefined,
+    vu: [],
+  },
+   options: DisplayOptions = {
+    label: "tok/s",
+    showVu: true,
+    vuColumns: 12,
+    vuScale: "fixed",
+    vuFullTps: 50,
+    showTrend: false,
+    showAvg: true,
+    showPeak: false,
+    showTtft: false,
+    showTokenCount: false,
+    showElapsed: false,
+   },
+   /* The graph is the head of the line, right after the label and its space,
+    * so its cells are the slice the assertions below read back out. */
+   HEAD = options.label.length + 1,
+   graph = (line: string): string => line.slice(HEAD, HEAD + options.vuColumns)
+
+  /** A history of `cells` one-second buckets, newest last.
+   * @param cells - Number of buckets the frame's history holds.
+   * @returns A snapshot whose graph segment must still be twelve columns.
+   */
+  function history(cells: number): Snapshot {
+    return { ...base, vu: Array.from({ length: cells }, (_, index): number => 10 + (index % 4) * 10) }
+  }
+
+  it("renders the same graph width for no, one and almost full histories", () => {
+    /* The ticket's three cases: 0, 1 and `vuColumns - 1` buckets, plus a full
+     * one to compare against. Every graph is twelve cells; the blanks are held
+     * on the left, so the rate never creeps toward the label. */
+    const full = formatLine(history(options.vuColumns), options)
+    for (const cells of [0, 1, options.vuColumns - 1, options.vuColumns]) {
+      const line = formatLine(history(cells), options)
+      assert.equal(graph(line).length, options.vuColumns, `history of ${cells}: ${line}`)
+      assert.equal(line.length, full.length, `history of ${cells}: ${line}`)
+      assert.ok(line.startsWith(`${options.label} `), line)
+    }
+  })
+
+  it("keeps the newest second at the right edge, beside the rate", () => {
+    /* Fixed full-scale of 50: 10 tokens is `▂`, 50 is the tallest `█`, so the
+     * newest bucket lands in the cell touching the rate, the older ones run
+     * leftwards from it, and blanks sit beyond them. */
+    const line = formatLine({ ...base, vu: [10, 50, 20] }, options)
+    assert.equal(graph(line), "         ▂█▃", line)
+    assert.equal(line.slice(HEAD + options.vuColumns), " 42.5 · avg 38.2", line)
+    /* Longer than the graph: the newest twelve columns survive and scroll off
+     * at the left edge, so the current second never moves out of its cell. */
+    const short = formatLine({ ...base, vu: [40, 40, 40, 40, 40, 20] }, options)
+    assert.equal(graph(short).at(-1), "▃", short)
+    const twelve = graph(formatLine(history(12), options)),
+      thirteen = graph(formatLine(history(13), options))
+    assert.equal(
+      thirteen.slice(0, options.vuColumns - 1),
+      twelve.slice(1),
+      "the graph scrolls one cell left as the thirteenth second lands",
+    )
+  })
+
+  it("holds one line width across successive seconds of a live turn", () => {
+    /* A real meter, one second of streaming per snapshot, alternating fast and
+     * slower seconds so the bars are distinguishable. The rate, average and
+     * peak stay inside the same digit band by design: the only thing moving
+     * here is the history, and the line does not move with it. */
+    const meter = new TpsMeter(WIDE, () => 0, 0),
+      lines: Array<string> = [],
+      bars: Array<string> = []
+    for (let second = 1; second <= 15; second += 1) {
+      const tokens = second % 2 === 0 ? 20 : 10
+      meter.record("a".repeat(tokens * 4), second * SECOND_MS)
+      const line = formatLine(meter.snapshot(second * SECOND_MS + 500, options.vuColumns), options)
+      lines.push(line)
+      bars.push(graph(line))
+    }
+
+    const widths = new Set<number>(lines.map((line): number => line.length))
+    assert.equal(widths.size, 1, `one width every second: ${lines.join("\n")}`)
+    const graphWidths = new Set<number>(bars.map((cells): number => cells.length))
+    assert.deepEqual([...graphWidths], [options.vuColumns], "the graph holds its columns every second")
+    for (const [index, cells] of bars.entries()) {
+      assert.notEqual(cells.at(-1), " ", `second ${index + 1} keeps a bar beside the rate: ${cells}`)
+    }
+    /* And it scrolls: the last graph is the one before it, shifted left by a
+     * cell with the newest second appended at the right edge. */
+    assert.equal(bars.at(-1)?.slice(0, options.vuColumns - 1), bars.at(-2)?.slice(1))
+  })
+
+  it("holds the graph width across a pause in the stream", () => {
+    /* Two seconds with nothing in them after the stream stops: the meter trims
+     * those empty seconds off the end of the history, and either way the graph
+     * is twelve cells and the newest bar keeps the cell beside the rate. */
+    const meter = new TpsMeter(WIDE, () => 0, 0)
+    for (let second = 1; second <= 3; second += 1) {
+      meter.record("a".repeat(80), second * SECOND_MS)
+    }
+    const streaming = formatLine(meter.snapshot(3500, options.vuColumns), options),
+      paused = formatLine(meter.snapshot(5500, options.vuColumns), options)
+    assert.equal(graph(streaming), "         ▃▃▃", streaming)
+    assert.equal(graph(paused), "         ▃▃▃", paused)
+    assert.equal(paused.length, streaming.length, `pause ${paused} vs stream ${streaming}`)
   })
 })
 
@@ -365,10 +506,27 @@ describe("hasData", () => {
 })
 
 describe("renderVu", () => {
-  it("renders only the columns that exist", () => {
-    assert.equal(renderVu([], 4, 50), "")
-    assert.equal(renderVu([50], 4, 50), "█")
-    assert.equal(renderVu([10, 20], 12, 50).length, 2)
+  it("pads a short history out to the full width", () => {
+    assert.equal(renderVu([], 4, 50), "    ")
+    assert.equal(renderVu([50], 4, 50), "   █")
+    assert.equal(renderVu([10, 20], 12, 50).length, 12)
+  })
+
+  it("keeps the newest column at the right edge", () => {
+    /* Oldest first in, newest last out: the cell beside the rate is always the
+     * newest second, whatever the history's length. */
+    assert.equal(renderVu([10, 20], 12, 50).at(-1), "▃")
+    assert.equal(renderVu([10, 20], 12, 50).at(-2), "▂")
+    assert.equal(renderVu([10, 20], 12, 50).slice(0, 10), " ".repeat(10))
+    assert.equal(renderVu([50, 20], 12, 50).at(-1), "▃")
+    assert.equal(renderVu([20, 50], 12, 50).at(-1), "█")
+  })
+
+  it("holds one width for every history length", () => {
+    const widths = [[], [40], [40, 40], [40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40]].map(
+      (values) => renderVu(values, 12, 50).length,
+    )
+    assert.deepEqual(widths, [12, 12, 12, 12])
   })
 
   it("maps levels proportionally", () => {
@@ -389,7 +547,10 @@ describe("renderVu", () => {
   })
 
   it("trims to the most recent columns", () => {
+    /* Longer than the graph: the newest columns win, and the oldest are the
+     * ones that scroll off, never the ones that get blanked out. */
     assert.equal(renderVu([0, 0, 50, 50], 2, 50), "██")
+    assert.equal(renderVu([10, 20, 30, 40], 2, 40), "▆█")
   })
 
   it("returns empty for zero cells", () => {
