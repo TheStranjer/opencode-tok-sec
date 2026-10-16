@@ -21,6 +21,10 @@ export type DisplayOptions = {
   readonly showTrend: boolean
   readonly showTtft: boolean
   readonly showVu: boolean
+  /**
+   * Columns the graph always occupies when it is shown: the newest this many
+   * seconds of history, left-padded with blanks while the turn is younger.
+   */
   readonly vuColumns: number
   readonly vuFullTps: number
   readonly vuScale: VuScale
@@ -128,14 +132,21 @@ export function vuFullScale(
 }
 
 /**
- * Render the newest `maxCells` values as glyphs; short histories stay short.
+ * Render the history as a graph of exactly `cells` columns, newest at the
+ * right edge.
+ *
+ * The width is the contract, not the history: this is the one place the
+ * graph's padding happens, so a turn's first second costs the same room as a
+ * full one and the rate beside it, and everything after that, never shifts as
+ * columns arrive. Fewer values than cells are left-padded with blank cells;
+ * more values keep only the newest `cells`, so the graph scrolls.
  * @param values - Per-second token counts, oldest first.
- * @param maxCells - Maximum number of columns to render.
+ * @param cells - Columns to fill; the result is always exactly this wide.
  * @param fullTps - Token count that maps to the tallest glyph.
- * @returns A glyph string, possibly empty; never padded.
+ * @returns A glyph string `cells` wide — empty only when `cells` is below 1.
  */
-export function renderVu(values: ReadonlyArray<number>, maxCells: number, fullTps: number): string {
-  const cap = Math.max(0, Math.floor(maxCells))
+export function renderVu(values: ReadonlyArray<number>, cells: number, fullTps: number): string {
+  const cap = Math.max(0, Math.floor(cells))
   if (cap === 0) {
     return ""
   }
@@ -145,11 +156,14 @@ export function renderVu(values: ReadonlyArray<number>, maxCells: number, fullTp
     .slice(-cap)
     .map((value) => {
       /* Any non-zero column gets at least one block so a slow second never
-       * reads like a gap. True zeros stay blank (and are trimmed at the edges). */
+       * reads like a gap. True zeros stay blank — the same cell the left pad
+       * below is made of, so an idle second and a second not yet lived in look
+       * alike. */
       const level = value <= 0 ? 0 : Math.max(1, Math.min(top, Math.round((value / scale) * top)))
       return VU_GLYPHS[level] ?? ""
     })
     .join("")
+    .padStart(cap, VU_GLYPHS[0])
 }
 
 /**
@@ -182,12 +196,18 @@ export function hasData(snapshot: Snapshot | undefined): boolean {
 }
 
 /**
- * Graph columns plus the rate, as the leading chunk of the display line.
+ * Graph cells plus the rate, as the leading chunk of the display line.
+ *
+ * The graph is fixed-width: `renderVu` pads it to every column it is handed,
+ * so a turn with one bucket — or with none yet — holds the same room as a full
+ * one and the line does not jump when the first bucket arrives. Only the
+ * absence of a graph collapses this chunk to the bare rate: `showVu` off, or
+ * no columns, which is how fitting drops the segment whole.
  * @param options - Which segments to include in the line.
  * @param snapshot - Fully computed meter snapshot to render.
  * @param columns - VU columns the graph may render; fitting passes either the
- * full `vuColumns` or 0, and 0 — like `showVu` off or an empty history —
- * leaves this chunk as the bare rate.
+ * full `vuColumns` or 0, and 0 — like `showVu` off — leaves this chunk as the
+ * bare rate.
  * @returns The label-adjacent first chunk of the display line.
  */
 function graphSegment(options: DisplayOptions, snapshot: Snapshot, columns: number): string {
@@ -199,6 +219,8 @@ function graphSegment(options: DisplayOptions, snapshot: Snapshot, columns: numb
     columns,
     vuFullScale(snapshot.vu, options.vuScale, options.vuFullTps, snapshot.peakBucket),
   )
+  /* A padded graph is never empty while it has columns, so this is the
+   * no-columns case only: the segment the graph was dropped from. */
   if (graph.length === 0) {
     return formatRate(snapshot.rate)
   }
@@ -330,6 +352,9 @@ function fitHead(options: DisplayOptions, snapshot: Snapshot, available: number)
  * first, then the graph, then TTFT, then peak, then the average. The graph is
  * removed whole at its rank, never trimmed column by column: it is either at
  * the full `options.vuColumns` or absent, and once dropped it stays dropped.
+ * Its width does not depend on the history either — `renderVu` pads it — so
+ * fitting decides once, on the full graph, and the columns it reserves for the
+ * segment are the columns the segment takes.
  * The label and rate never drop, and the trend goes last of all. It is held
  * to the width its padding reserves, so a row too narrow for `▲130%` never
  * shows a skinnier trend and then wraps when the number grows.
